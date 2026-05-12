@@ -37,17 +37,25 @@ Switch from Gemma 4 E2B to LFM2.5: resident drops to ~80 MB during the placehold
 
 ## Run it
 
-1. Open Xcode 16+, create a fresh **iOS App** project. Deployment target **iOS 18** (the app's chat works on iOS 18+; the Apple FM selector also requires iOS 26 at runtime).
-2. Replace the generated `App` / `ContentView` files with the four files in [`PFMSwitcher/`](PFMSwitcher/):
-   - `PFMSwitcherApp.swift`
-   - `ModelManager.swift`
-   - `ChatView.swift`
-   - `AppleFMBridgeBackend.swift`
-3. **Package Dependencies → Add Package**: `https://github.com/john-rocky/PrivateFoundationModels` and add both products to the app target:
-   - `PrivateFoundationModels`
-   - `PrivateFoundationModelsCoreML`
-4. Build to a real device. First time you pick **LFM2.5-350M** the app downloads ~810 MB to `~/Library/Application Support/PrivateFoundationModels/lfm2.5-350m-coreml/`. Wi-Fi recommended.
-5. To enable the **Apple FoundationModels** option, link Apple's framework: in your target's **Frameworks, Libraries, and Embedded Content**, hit `+` and add `FoundationModels.framework` (visible on iOS 26+ SDK toolchains). The bridge file is `#if canImport(FoundationModels)`-gated, so the app still builds and runs on iOS 18 if you skip this step — the picker will throw `appleFMUnavailable` for the Apple option but Wikipedia LFM2.5 / Gemma 4 still works.
+```bash
+open Examples/PFMSwitcher/PFMSwitcher.xcodeproj
+```
+
+That's all the setup. The project ships with the package dependency on the workspace root resolved — Xcode 16+ will fetch `swift-syntax` (for `@Generable`) + `CoreML-LLM` + `swift-transformers` on first open. Pick **PFMSwitcher** scheme → run on a real iPhone (iOS 18+).
+
+First time you pick **LFM2.5-350M** in the picker, the app downloads ~810 MB to `~/Library/Application Support/PrivateFoundationModels/lfm2.5-350m-coreml/`. Wi-Fi recommended.
+
+To enable the **Apple FoundationModels** picker option, link Apple's framework on an iOS 26 SDK toolchain: add `FoundationModels.framework` to the target's *Frameworks, Libraries, and Embedded Content*. `AppleFMBridgeBackend.swift` is `#if canImport(FoundationModels)`-gated so the app still builds and runs on iOS 18 toolchains without it — the picker just throws `appleFMUnavailable` for the Apple row, and the CoreML rows work normally.
+
+### Regenerating the project file
+
+The `.xcodeproj` is generated from [`project.yml`](project.yml) via [xcodegen](https://github.com/yonaskolb/XcodeGen). If you change targets or files, run:
+
+```bash
+brew install xcodegen   # one-time
+cd Examples/PFMSwitcher
+xcodegen generate
+```
 
 ## File map
 
