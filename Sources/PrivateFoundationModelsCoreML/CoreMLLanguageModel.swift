@@ -24,13 +24,31 @@ public enum CoreMLLanguageModel {
     /// Models we ship out-of-the-box. Names align with HuggingFace repos
     /// under `mlboydaisuke/*`; pass `.custom("user/repo-coreml")` for any
     /// other CoreML bundle that CoreML-LLM can load.
+    ///
+    /// Compatibility note: `CoreMLLLM.load(repo:)` (the unified entry this
+    /// adapter calls) supports the flat monolithic layout (LFM2.5) and the
+    /// Gemma 4 chunked layout. The Qwen3.5 / Qwen3-VL families ship under a
+    /// different chunk-naming convention and are driven by separate Swift
+    /// types in the upstream package (`Qwen35MLKVGenerator`,
+    /// `Qwen3VL2BStatefulGenerator`); those catalog cases will fail at
+    /// load on v0.1 and are kept for source-compatibility only. See
+    /// `docs/VERIFICATION.md` for the matrix.
     public enum Catalog: Sendable, Hashable {
-        case qwen3_5_0_8B
-        case qwen3_5_2B
-        case gemma4E2B
-        case gemma4E4B
-        case qwen3VL2BStateful
+        /// Recommended default. Verified end-to-end on Mac in
+        /// `docs/VERIFICATION.md`.
         case lfm2_5_350M
+        /// Gemma 4 E2B (text + image + video + audio multimodal). Routes
+        /// through the unified entry.
+        case gemma4E2B
+        /// Gemma 4 E4B (text-only). Routes through the unified entry.
+        case gemma4E4B
+        /// Qwen3.5 0.8B. Currently NOT loadable via this adapter — pending
+        /// a `Qwen35MLKVGenerator` routing path in v0.2.
+        case qwen3_5_0_8B
+        /// Qwen3.5 2B. Same caveat as `qwen3_5_0_8B`.
+        case qwen3_5_2B
+        /// Qwen3-VL 2B (stateful). Same caveat as `qwen3_5_0_8B`.
+        case qwen3VL2BStateful
         case custom(String)
 
         var repo: String {
@@ -164,7 +182,16 @@ public final class CoreMLBackendImpl: LanguageModelBackend, @unchecked Sendable 
                             continuation.finish()
                             return
                         }
-                        let final = parsed.text ?? cumulative
+                        // CRITICAL: the final snapshot must preserve the
+                        // cumulative-prefix invariant Apple's ResponseStream
+                        // guarantees. `parse()` may trim trailing whitespace
+                        // or strip a code fence — fine for the *Transcript*
+                        // entry, but breaks `snapshots[i].hasPrefix(snapshots[i-1])`.
+                        // So we emit the raw cumulative as the final stream
+                        // snapshot; the session-level `Response.content`
+                        // surfaces the parsed text separately via the
+                        // non-streaming path.
+                        let final = sawToolHeader ? (parsed.text ?? cumulative) : cumulative
                         continuation.yield(.text(cumulative: final, complete: true))
                         continuation.finish()
                     }
@@ -273,31 +300,77 @@ public final class CoreMLBackendImpl: LanguageModelBackend, @unchecked Sendable 
 
         // Tool call detection
         if !tools.isEmpty, let range = trimmed.range(of: toolCallMarker) {
-            let after = trimmed[range.upperBound...]
+            let after = String(trimmed[range.upperBound...])
             let lines = after.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
             guard let firstLine = lines.first else {
                 return BackendGeneration(text: trimmed)
             }
             let toolName = firstLine.trimmingCharacters(in: .whitespaces)
-            let arguments: String
+            let rest: String
             if lines.count > 1 {
-                arguments = String(lines[1]).trimmingCharacters(in: .whitespacesAndNewlines)
+                rest = String(lines[1]).trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
-                arguments = "{}"
+                rest = ""
             }
-            // Strip code fences if the model wrapped the JSON in ```json … ```
-            let cleaned = stripCodeFence(arguments)
+            // Try to extract a JSON object from `rest`. Small models often
+            // surround the JSON with prose ("here are the args: { ... }
+            // please call ..."), so look for the outermost balanced
+            // `{ ... }` instead of trusting the model to put bare JSON on
+            // the line.
+            let cleaned = extractJSONObject(rest) ?? stripCodeFence(rest)
+            // If after cleaning we still don't have a leading `{`, the
+            // model didn't actually emit a tool call — treat the whole
+            // output as text and let the session decide what to do.
+            let trimmedCleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmedCleaned.hasPrefix("{") else {
+                return BackendGeneration(text: trimmed)
+            }
             return BackendGeneration(text: nil, toolCalls: [
-                .init(name: toolName, argumentsJSON: cleaned)
+                .init(name: toolName, argumentsJSON: trimmedCleaned)
             ])
         }
 
-        // Schema-constrained: strip any code fences the model wrapped around the JSON
+        // Schema-constrained: extract a single JSON object the model emitted.
         if schema != nil {
+            if let json = extractJSONObject(trimmed) {
+                return BackendGeneration(text: json)
+            }
             return BackendGeneration(text: stripCodeFence(trimmed))
         }
 
         return BackendGeneration(text: trimmed)
+    }
+
+    /// Return the substring of `text` between the first `{` and the matching
+    /// `}` that balances it (depth-counting, string-aware). Returns nil if
+    /// no balanced object is present.
+    static func extractJSONObject(_ text: String) -> String? {
+        guard let start = text.firstIndex(of: "{") else { return nil }
+        var depth = 0
+        var inString = false
+        var escape = false
+        var idx = start
+        while idx < text.endIndex {
+            let ch = text[idx]
+            if escape {
+                escape = false
+            } else if ch == "\\" && inString {
+                escape = true
+            } else if ch == "\"" {
+                inString.toggle()
+            } else if !inString {
+                if ch == "{" {
+                    depth += 1
+                } else if ch == "}" {
+                    depth -= 1
+                    if depth == 0 {
+                        return String(text[start...idx])
+                    }
+                }
+            }
+            idx = text.index(after: idx)
+        }
+        return nil
     }
 
     static func stripCodeFence(_ s: String) -> String {

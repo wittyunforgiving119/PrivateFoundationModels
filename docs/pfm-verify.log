@@ -1,0 +1,69 @@
+
+──────────────────────────────────────────────────────────────────────────────
+ PrivateFoundationModels verification
+──────────────────────────────────────────────────────────────────────────────
+  Model:           lfm2.5-350m
+  Date:            2026-05-12 19:29:38 +0000
+  Working dir:     /Users/majimadaisuke/Downloads/PrivateFoundationModels
+
+──────────────────────────────────────────────────────────────────────────────
+ 1. Load model
+──────────────────────────────────────────────────────────────────────────────
+  • Loading lfm2.5-350m via CoreML-LLM…
+  • Reading config...
+  • Loading tokenizer...
+  • Loading model...
+[Load] LFM2 conv_state_in shape: [10, 1024, 3]
+  • Ready
+  ✓ loaded coreml://mlboydaisuke/lfm2.5-350m-coreml in 298 ms
+  • context length: 2048
+  • vision supported: false
+  • audio supported:  false
+  ✓ SystemLanguageModel.default is available
+
+──────────────────────────────────────────────────────────────────────────────
+ 2. respond(to:) — non-streaming
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Name a primary color.
+  ✓ response (563 ms): "Red."
+  • prompt: Say hello in Japanese.
+  ✓ response (858 ms): "Red."
+  ✓ transcript contains instructions + 2 prompts + 2 responses (5 entries)
+
+──────────────────────────────────────────────────────────────────────────────
+ 3. streamResponse(to:) — cumulative snapshots
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Why is the sky blue? Two sentences.
+  ✓ 16 snapshots, cumulative-prefix invariant holds
+  ✓ collect() == last snapshot ✓
+  ✓ final (844 ms): "The sky appears blue due to Rayleigh scattering, which filters sunlight."
+
+──────────────────────────────────────────────────────────────────────────────
+ 4. respond(to:generating:) — structured output
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Pick a famous city and describe it briefly.
+  • schema: object with required ["city", "country", "famousFor"]
+  ✓ parsed (2343 ms): Paris, France — Cultural landmarks
+
+──────────────────────────────────────────────────────────────────────────────
+ 5. Tool calling
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: What is 17 plus 25? Use the add tool.
+  ✓ final (6877 ms): "42"
+  ✓ transcript shows toolCall + toolOutput: [PrivateFoundationModels.Transcript.Entry.Kind.instructions, PrivateFoundationModels.Transcript.Entry.Kind.prompt, PrivateFoundationModels.Transcript.Entry.Kind.toolCall, PrivateFoundationModels.Transcript.Entry.Kind.toolOutput, PrivateFoundationModels.Transcript.Entry.Kind.response]
+  • tool output value: 42
+
+──────────────────────────────────────────────────────────────────────────────
+ 6. Transcript serialization round-trip
+──────────────────────────────────────────────────────────────────────────────
+  • serialized: 270 bytes
+  ✓ round-trip preserved kinds + content (3 entries)
+
+──────────────────────────────────────────────────────────────────────────────
+ Summary
+──────────────────────────────────────────────────────────────────────────────
+  passed: 10
+  failed: 0
+
+  🎉 every scenario passed.
+

@@ -7,7 +7,7 @@ import PrivateFoundationModels
 import PrivateFoundationModelsCoreML
 
 SystemLanguageModel.default = SystemLanguageModel(
-    backend: try await CoreMLLanguageModel.load(.qwen3_5_0_8B)
+    backend: try await CoreMLLanguageModel.load(.lfm2_5_350M)
 )
 
 let session = LanguageModelSession(
@@ -18,7 +18,9 @@ let reply = try await session.respond(to: "What is `async let`?")
 print(reply.content)
 ```
 
-That's the same `LanguageModelSession.respond(to:)` shape Apple ships in iOS 26 — running on iOS 18, on Qwen3.5, on the Neural Engine, fully on-device.
+That's the same `LanguageModelSession.respond(to:)` shape Apple ships in iOS 26 — running on iOS 18, on LFM2.5-350M, on the Neural Engine, fully on-device.
+
+**This is verified, not aspirational** — the full scenario matrix (load, respond, streamResponse, Generable, Tool calling, Transcript round-trip) ran green on an Apple M4 Max against the real model. See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for the captured log.
 
 ---
 
@@ -171,18 +173,18 @@ let answer = try await session.respond(to: "Tell me a story.", options: options)
 
 ## Model catalog
 
-The CoreML backend ships with these defaults out of the box (see [`CoreMLLanguageModel.Catalog`](Sources/PrivateFoundationModelsCoreML/CoreMLLanguageModel.swift)):
+The CoreML backend ships with these defaults (see [`CoreMLLanguageModel.Catalog`](Sources/PrivateFoundationModelsCoreML/CoreMLLanguageModel.swift)):
 
-| Catalog case | HuggingFace repo | Size | iPhone 17 Pro decode |
-|---|---|---|---|
-| `.qwen3_5_0_8B` | `mlboydaisuke/qwen3.5-0.8B-CoreML` | 1.2 GB | ~48 tok/s |
-| `.qwen3_5_2B` | `mlboydaisuke/qwen3.5-2B-CoreML` | 2.8 GB | ~27 tok/s |
-| `.gemma4E2B` | `mlboydaisuke/gemma-4-E2B-coreml` | 5.4 GB | ~34 tok/s |
-| `.gemma4E4B` | `mlboydaisuke/gemma-4-E4B-coreml` | 5.5 GB | ~14 tok/s |
-| `.qwen3VL2BStateful` | `mlboydaisuke/qwen3-vl-2b-stateful-coreml` | 2.3 GB | ~24 tok/s |
-| `.lfm2_5_350M` | `mlboydaisuke/lfm2.5-350m-coreml` | 810 MB | ~52 tok/s |
+| Catalog case | HuggingFace repo | Size | iPhone 17 Pro decode | v0.1 |
+|---|---|---|---|---|
+| `.lfm2_5_350M` | `mlboydaisuke/lfm2.5-350m-coreml` | 810 MB | ~52 tok/s | ✅ verified |
+| `.gemma4E2B` | `mlboydaisuke/gemma-4-E2B-coreml` | 5.4 GB | ~34 tok/s | ✅ chunked path |
+| `.gemma4E4B` | `mlboydaisuke/gemma-4-E4B-coreml` | 5.5 GB | ~14 tok/s | ✅ chunked path |
+| `.qwen3_5_0_8B` | `mlboydaisuke/qwen3.5-0.8B-CoreML` | 1.2 GB | ~48 tok/s | ⚠ needs v0.2 generator routing |
+| `.qwen3_5_2B` | `mlboydaisuke/qwen3.5-2B-CoreML` | 2.8 GB | ~27 tok/s | ⚠ same |
+| `.qwen3VL2BStateful` | `mlboydaisuke/qwen3-vl-2b-stateful-coreml` | 2.3 GB | ~24 tok/s | ⚠ same |
 
-Numbers from CoreML-LLM's published benchmarks. Any other CoreML bundle that CoreML-LLM can load works via `.custom("user/repo-coreml")`.
+Numbers from CoreML-LLM's published benchmarks. Any other CoreML bundle that CoreML-LLM can load via `CoreMLLLM.load(repo:)` works via `.custom("user/repo-coreml")`. The Qwen family loads through a separate Swift type in CoreML-LLM (`Qwen35MLKVGenerator`); routing those catalog entries through that path is the v0.2 milestone, see [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
 
 ---
 

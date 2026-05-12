@@ -21,6 +21,12 @@ let package = Package(
         // Neural Engine. Set `SystemLanguageModel.default` to the value
         // returned by `CoreMLLanguageModel.default()` to use it.
         .library(name: "PrivateFoundationModelsCoreML", targets: ["PrivateFoundationModelsCoreML"]),
+
+        // End-to-end verification harness. Exercises every public API path
+        // (respond / streamResponse / Generable / Tools / transcript) against
+        // a real on-device model. Run with:
+        //   swift run -c release pfm-verify --model qwen3.5-0.8B
+        .executable(name: "pfm-verify", targets: ["PFMVerify"]),
     ],
     dependencies: [
         .package(url: "https://github.com/john-rocky/CoreML-LLM", from: "1.8.0"),
@@ -47,6 +53,16 @@ let package = Package(
             name: "PrivateFoundationModelsTests",
             dependencies: [
                 "PrivateFoundationModels",
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+        .executableTarget(
+            name: "PFMVerify",
+            dependencies: [
+                "PrivateFoundationModels",
+                "PrivateFoundationModelsCoreML",
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
