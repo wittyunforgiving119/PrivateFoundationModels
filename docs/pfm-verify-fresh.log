@@ -1,0 +1,83 @@
+
+──────────────────────────────────────────────────────────────────────────────
+ PrivateFoundationModels verification
+──────────────────────────────────────────────────────────────────────────────
+  Model:           lfm2.5-350m
+  Date:            2026-05-12 23:30:30 +0000
+  Working dir:     /Users/majimadaisuke/Downloads/PrivateFoundationModels
+
+──────────────────────────────────────────────────────────────────────────────
+ 1. Load model
+──────────────────────────────────────────────────────────────────────────────
+  • Loading lfm2.5-350m via CoreML-LLM…
+  • Fetching mlboydaisuke/lfm2.5-350m-coreml → /Users/majimadaisuke/Library/Application Support/PrivateFoundationModels/lfm2.5-350m-coreml
+  • [1/12] .gitattributes (1.5 KB)
+  • [2/12] README.md (6.6 KB)
+  • [3/12] hf_model/config.json (1.3 KB)
+  • [4/12] hf_model/generation_config.json (134 B)
+  • [5/12] hf_model/tokenizer.json (4.5 MB)
+  • [6/12] hf_model/tokenizer_config.json (573 B)
+  • [7/12] model.mlmodelc/analytics/coremldata.bin (243 B)
+  • [8/12] model.mlmodelc/coremldata.bin (581 B)
+  • [9/12] model.mlmodelc/metadata.json (4.3 KB)
+  • [10/12] model.mlmodelc/model.mil (387.3 KB)
+  • [11/12] model.mlmodelc/weights/weight.bin (805.1 MB)
+  • [12/12] model_config.json (454 B)
+  • Loading model…
+  • Reading config...
+  • Loading tokenizer...
+  • Loading model...
+[Load] LFM2 conv_state_in shape: [10, 1024, 3]
+  • Ready
+  ✓ loaded coreml://mlboydaisuke/lfm2.5-350m-coreml in 97355 ms
+  • context length: 2048
+  • vision supported: false
+  • audio supported:  false
+  ✓ SystemLanguageModel.default is available
+
+──────────────────────────────────────────────────────────────────────────────
+ 2. respond(to:) — non-streaming
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Name a primary color.
+  ✓ response (568 ms): "Red."
+  • prompt: Say hello in Japanese.
+  ✓ response (858 ms): "Red."
+  ✓ transcript contains instructions + 2 prompts + 2 responses (5 entries)
+
+──────────────────────────────────────────────────────────────────────────────
+ 3. streamResponse(to:) — cumulative snapshots
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Why is the sky blue? Two sentences.
+  ✓ 16 snapshots, cumulative-prefix invariant holds
+  ✓ collect() == last snapshot ✓
+  ✓ final (857 ms): "The sky appears blue due to Rayleigh scattering, which filters sunlight."
+
+──────────────────────────────────────────────────────────────────────────────
+ 4. respond(to:generating:) — structured output
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Pick a famous city and describe it briefly.
+  • schema: object with required ["city", "country", "famousFor"]
+  ✓ parsed (2332 ms): Paris, France — Cultural landmarks
+
+──────────────────────────────────────────────────────────────────────────────
+ 5. Tool calling
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: What is 17 plus 25? Use the add tool.
+  ✓ final (6791 ms): "42"
+  ✓ transcript shows toolCall + toolOutput: [PrivateFoundationModels.Transcript.Entry.Kind.instructions, PrivateFoundationModels.Transcript.Entry.Kind.prompt, PrivateFoundationModels.Transcript.Entry.Kind.toolCall, PrivateFoundationModels.Transcript.Entry.Kind.toolOutput, PrivateFoundationModels.Transcript.Entry.Kind.response]
+  • tool output value: 42
+
+──────────────────────────────────────────────────────────────────────────────
+ 6. Transcript serialization round-trip
+──────────────────────────────────────────────────────────────────────────────
+  • serialized: 270 bytes
+  ✓ round-trip preserved kinds + content (3 entries)
+
+──────────────────────────────────────────────────────────────────────────────
+ Summary
+──────────────────────────────────────────────────────────────────────────────
+  passed: 10
+  failed: 0
+
+  🎉 every scenario passed.
+

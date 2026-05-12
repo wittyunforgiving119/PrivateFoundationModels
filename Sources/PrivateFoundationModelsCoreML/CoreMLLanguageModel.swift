@@ -67,15 +67,57 @@ public enum CoreMLLanguageModel {
     /// Load (downloading on first call) a CoreML LLM bundle and wrap it as a
     /// `LanguageModelBackend`. The returned value is safe to install as
     /// `SystemLanguageModel.default`'s backend.
+    ///
+    /// The first call downloads the repo via a foreground URLSession to the
+    /// cache directory (`~/Library/Application Support/PrivateFoundationModels/<repo-basename>`).
+    /// Subsequent calls skip files whose on-disk size matches the HF-reported
+    /// size. The download path works from a plain CLI / Xcode Preview /
+    /// unit-test process, unlike CoreML-LLM's upstream background downloader.
+    ///
+    /// `cacheDirectory` overrides the cache root. `hfToken` is forwarded to
+    /// HuggingFace for gated repos.
     public static func load(
         _ model: Catalog,
         computeUnits: MLComputeUnits = .cpuAndNeuralEngine,
-        onProgress: ((String) -> Void)? = nil
+        cacheDirectory: URL? = nil,
+        hfToken: String? = nil,
+        onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> CoreMLBackendImpl {
-        let llm = try await CoreMLLLM.load(repo: model.repo,
+        let modelDir = try resolveCacheDirectory(for: model, override: cacheDirectory)
+        onProgress?("Fetching \(model.repo) → \(modelDir.path)")
+        try await HFFetcher().ensure(repo: model.repo, in: modelDir, token: hfToken) { event in
+            onProgress?(event.description)
+        }
+
+        onProgress?("Loading model…")
+        let llm = try await CoreMLLLM.load(from: modelDir,
                                             computeUnits: computeUnits,
-                                            onProgress: onProgress)
+                                            onProgress: { stage in onProgress?(stage) })
         return CoreMLBackendImpl(llm: llm, modelIdentifier: "coreml://\(model.repo)")
+    }
+
+    /// Return the directory this catalog entry should live in. Defaults to
+    /// `~/Library/Application Support/PrivateFoundationModels/<repo-basename>`
+    /// — outside `~/Documents/Models` so we don't collide with CoreML-LLM's
+    /// own cache.
+    public static func defaultCacheDirectory(for model: Catalog) throws -> URL {
+        try resolveCacheDirectory(for: model, override: nil)
+    }
+
+    private static func resolveCacheDirectory(for model: Catalog, override: URL?) throws -> URL {
+        let folder = (model.repo as NSString).lastPathComponent
+        if let override {
+            return override.appendingPathComponent(folder)
+        }
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return appSupport
+            .appendingPathComponent("PrivateFoundationModels", isDirectory: true)
+            .appendingPathComponent(folder, isDirectory: true)
     }
 
     /// Wrap an already-loaded `CoreMLLLM` instance. Useful if you constructed

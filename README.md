@@ -20,9 +20,15 @@ print(reply.content)
 
 That's the same `LanguageModelSession.respond(to:)` shape Apple ships in iOS 26 — running on iOS 18, on LFM2.5-350M, on the Neural Engine, fully on-device.
 
-**This is verified, not aspirational** — the full scenario matrix (load, respond, streamResponse, Generable, Tool calling, Transcript round-trip) ran green on an Apple M4 Max against the real model. See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for the captured log.
+**Verified on Mac, not aspirational** — three harnesses run green against a real on-device model on the Apple Neural Engine:
+
+- [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — every public API path (10/10)
+- [`docs/PORTABILITY.md`](docs/PORTABILITY.md) — Apple-FM-shaped call sites compile and run unchanged (8/8)
+- [`docs/DEEP_VERIFICATION.md`](docs/DEEP_VERIFICATION.md) — every Generable shape × Tool pattern (44 stub tests + real-model PASS 7 / MODEL 4 / FAIL 0)
 
 **Drop-in source compatibility with Apple `FoundationModels`** — the same code that uses Apple's framework on iOS 26 compiles unchanged against `PrivateFoundationModels` on iOS 18. The only diff is the `import` line plus a one-line backend install at app startup. Eight Apple-FM-shaped call sites — single-turn / multi-turn / trailing-closure instructions / streaming / `GenerationOptions` / `Generable` / `Tool` / transcript Codable — run green end-to-end. See [`docs/PORTABILITY.md`](docs/PORTABILITY.md) for the exact diff and the runtime log.
+
+**First call downloads the model. No prep required.** `CoreMLLanguageModel.load(.lfm2_5_350M)` writes ~810 MB to `~/Library/Application Support/PrivateFoundationModels/lfm2.5-350m-coreml/` over a foreground URLSession and skips files already present on subsequent runs. Works from a CLI, an Xcode Preview, a unit test harness, or an iOS app — none of CoreML-LLM's background-URLSession assumptions apply.
 
 ---
 
@@ -65,7 +71,28 @@ Two products:
 - **`PrivateFoundationModels`** — the API surface (`LanguageModelSession`, `Instructions`, …). Zero runtime deps. Import this everywhere.
 - **`PrivateFoundationModelsCoreML`** — the default backend. Depends on [`john-rocky/CoreML-LLM`](https://github.com/john-rocky/CoreML-LLM), which runs Gemma 4 / Qwen3.5 / Qwen3-VL / LFM2.5 / FunctionGemma / EmbeddingGemma on the Apple Neural Engine. Import only in the target that wires `SystemLanguageModel.default`.
 
+Both are pure SPM. No CocoaPods. No special build phase. No model files in the repo — the backend downloads on first call.
+
 You can also wire your own `LanguageModelBackend` (MLX-Swift, llama.cpp, a remote API) — see [Bring your own backend](#bring-your-own-backend) below.
+
+### Model download
+
+`CoreMLLanguageModel.load(...)` populates the model directory on the first call using a foreground URLSession; the second call sees every file already on disk and skips straight to the load step.
+
+```swift
+let backend = try await CoreMLLanguageModel.load(
+    .lfm2_5_350M,
+    cacheDirectory: nil,           // optional override; defaults to Application Support
+    hfToken: nil,                  // optional, for gated repos
+    onProgress: { print($0) }      // per-file events ("[3/12] hf_model/tokenizer.json (4.5 MB)")
+)
+```
+
+Default cache path: `~/Library/Application Support/PrivateFoundationModels/<repo-basename>/`.
+
+You don't need `huggingface-cli` installed, you don't need to pre-populate anything, and you don't need an iOS app context — the fetcher is a vanilla foreground `URLSession`. The CoreML-LLM upstream's background-`URLSession` downloader (which doesn't work from a plain CLI / Xcode Preview / unit-test process) is bypassed entirely.
+
+If a download is interrupted, re-running picks up where it left off — files whose on-disk size matches the HuggingFace-reported size are skipped per-file.
 
 ---
 
@@ -259,14 +286,28 @@ If you find a method or initializer in Apple's docs that PFM doesn't ship, pleas
 
 ---
 
+## Verified
+
+Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1, against `mlboydaisuke/lfm2.5-350m-coreml` on the Apple Neural Engine:
+
+| Harness | What it proves | Result |
+|---|---|---|
+| `swift test` | Session logic, schema decoder, tool dispatch, error wrapping — all stub-backed for determinism | **44 / 44 pass** ([deep tests](docs/DEEP_VERIFICATION.md)) |
+| `swift run -c release pfm-verify` | Every public API path against a real model | **10 / 10 pass** ([log](docs/pfm-verify.log)) |
+| `swift run -c release pfm-portability` | Real Apple-FM-shaped code compiled and ran unchanged | **8 / 8 pass** ([log](docs/pfm-portability.log)) |
+| `swift run -c release pfm-deep` | Every Generable shape × Tool pattern against the real model | **PASS 7 / MODEL 4 / FAIL 0** ([log](docs/pfm-deep.log)) |
+
+`MODEL` = API works, content quality limited by the 350 M-parameter model used for verification (a larger model lands the test in PASS). `FAIL` = framework / backend regression — zero is the only acceptable number.
+
 ## Roadmap
 
-- v0.1 — Core API + CoreML backend (this release)
+- v0.1 — Core API + CoreML backend + foreground HF fetcher (this release)
 - v0.2 — `@Generable` macro for auto-schema derivation
-- v0.3 — MLX-Swift backend
-- v0.4 — llama.cpp / GGUF backend
-- v0.5 — Grammar-constrained decoding for the CoreML backend (via FunctionGemma for schema-restricted output)
-- v0.6 — Vision input on the session API (so multimodal models like Qwen3-VL accept images via `respond(to:image:)`)
+- v0.3 — Qwen3.5 / Qwen3-VL routing through `Qwen35MLKVGenerator` for the catalog entries that today need v0.2
+- v0.4 — MLX-Swift backend
+- v0.5 — llama.cpp / GGUF backend
+- v0.6 — Grammar-constrained decoding for the CoreML backend
+- v0.7 — Vision input on the session API (`respond(to:image:)` for Qwen3-VL / Gemma 4 multimodal)
 
 ---
 
