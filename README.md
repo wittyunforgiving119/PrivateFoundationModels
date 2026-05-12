@@ -279,6 +279,11 @@ If you find a method or initializer in Apple's docs that PFM doesn't ship, pleas
 
 ---
 
+## Examples
+
+- [`Examples/PFMChat/`](Examples/PFMChat/) — single-file SwiftUI chat app (~200 lines). Loads `mlboydaisuke/lfm2.5-350m-coreml`, streams responses.
+- [`Examples/PFMSwitcher/`](Examples/PFMSwitcher/) — production-shaped chat app that **switches between Apple `FoundationModels` (iOS 26+) and any CoreML catalog model** with a single picker. Demonstrates the strict release-before-load pattern needed when one of the resident models is 5+ GB on ANE. Includes live RSS readout and a `didReceiveMemoryWarningNotification` handler.
+
 ## Verified
 
 Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1, against `mlboydaisuke/lfm2.5-350m-coreml` on the Apple Neural Engine:
