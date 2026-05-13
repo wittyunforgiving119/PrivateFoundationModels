@@ -545,10 +545,16 @@ Standardized `streamResponse` bench on M4 Max / macOS 26.0 (median of 3 timed it
 - v0.8.1 — OpenAI vision content arrays. `data:image/<mime>;base64,...`
   URIs decoded inline; first image flows to `respond(to:image:)`;
   text-only backends drop silently.
-- **v0.9.0 (current)** — `/v1/embeddings` endpoint + `EmbeddingBackend`
+- v0.9.0 — `/v1/embeddings` endpoint + `EmbeddingBackend`
   protocol + `MLXEmbedder` (experimental). `pfm-serve-mlx
-  --embedding-model <repo>` opt-in. Drop-in compatible with
-  `openai.embeddings.create(...)`.
+  --embedding-model <repo>` opt-in.
+- **v0.9.1 (current)** — Streaming tool calls. `stream: true` +
+  `tools[]` now emits OpenAI-shaped delta chunks
+  (`role:assistant` → tool-call metadata → `function.arguments` →
+  `finish_reason:"tool_calls"` → `[DONE]`). Verified end-to-end
+  via the official `openai` Python SDK's streaming chunk
+  accumulation. Plus `bin/` promotion scripts (`post-tabs.sh`,
+  `post-x.py`, `post-reddit.py`) for one-command launches.
 - v0.8 — Qwen3-VL routing on CoreML, grammar-constrained sampler
   behind a feature flag, llama.cpp / GGUF backend.
 - v0.6 — llama.cpp / GGUF backend

@@ -377,19 +377,23 @@ public final class PFMServer: @unchecked Sendable {
     ) async {
         let session: LanguageModelSession
         let jsonMode = isJSONMode(json)
-        let resolvedInstructions: String
-        if jsonMode {
-            // Same strict-JSON instruction the non-streaming path
-            // uses. Note we cannot strip ` ```json … ``` ` fences
-            // mid-stream because the fence boundary arrives split
-            // across chunks; clients should parse defensively when
-            // streaming JSON mode.
+        let toolsJSON = (json["tools"] as? [[String: Any]]) ?? []
+        let hasTools = !toolsJSON.isEmpty
+        var resolvedInstructions = instructions
+        if hasTools {
+            // Stream + tools: same prompt-injection as the unary
+            // path. We buffer the entire response below so we can
+            // decide post-stream whether to emit tool-call chunks
+            // or regular text deltas.
+            let preamble = Self.openAIToolsAsPromptText(toolsJSON)
+            resolvedInstructions = resolvedInstructions.isEmpty
+                ? preamble
+                : "\(resolvedInstructions)\n\n\(preamble)"
+        } else if jsonMode {
             let strictness = "Respond with exactly one valid JSON object. No prose, no markdown code fences, no leading or trailing text."
-            resolvedInstructions = instructions.isEmpty
+            resolvedInstructions = resolvedInstructions.isEmpty
                 ? strictness
-                : "\(instructions)\n\n\(strictness)"
-        } else {
-            resolvedInstructions = instructions
+                : "\(resolvedInstructions)\n\n\(strictness)"
         }
         if resolvedInstructions.isEmpty {
             session = LanguageModelSession()
@@ -423,7 +427,6 @@ public final class PFMServer: @unchecked Sendable {
              on: connection)
 
         do {
-            var lastLen = 0
             // PFM's session takes one optional CGImage; pick the first
             // attached image. Text-only backends silently drop it.
             let stream: ResponseStream<String>
@@ -432,19 +435,66 @@ public final class PFMServer: @unchecked Sendable {
             } else {
                 stream = session.streamResponse(to: prompt, options: options)
             }
-            for try await snapshot in stream {
-                let text = snapshot.content
-                if text.count > lastLen {
-                    let delta = String(text.suffix(text.count - lastLen))
-                    lastLen = text.count
+
+            if hasTools {
+                // Tools branch: we cannot emit text deltas eagerly
+                // because the reply might turn out to be a tool_call
+                // JSON object — only knowable after the stream
+                // completes. Buffer cumulative content, parse once,
+                // then emit either tool_call chunks or a single
+                // text-content chunk.
+                var lastContent = ""
+                for try await snapshot in stream {
+                    lastContent = snapshot.content
+                }
+                if let call = Self.parseToolCall(in: lastContent) {
+                    let callID = "call_\(UUID().uuidString.prefix(24).replacingOccurrences(of: "-", with: ""))"
+                    // Chunk 1: tool_call metadata + empty args (matches
+                    // OpenAI's first delta when the tool starts).
+                    send(chunk: toolCallChunkOpener(id: id, created: created,
+                                                     callID: callID, name: call.name),
+                         on: connection)
+                    // Chunk 2: full arguments in one delta. Clients
+                    // accumulate the arguments string until
+                    // finish_reason fires.
+                    send(chunk: toolCallChunkArguments(id: id, created: created,
+                                                        arguments: call.arguments),
+                         on: connection)
+                    // Chunk 3: end.
                     send(chunk: chunkPayload(id: id, created: created,
-                                              role: nil, content: delta, finish: nil),
+                                              role: nil, content: nil,
+                                              finish: "tool_calls"),
+                         on: connection)
+                } else {
+                    // Model answered directly — emit the buffered text
+                    // as a single content delta then finish.
+                    if !lastContent.isEmpty {
+                        send(chunk: chunkPayload(id: id, created: created,
+                                                  role: nil, content: lastContent,
+                                                  finish: nil),
+                             on: connection)
+                    }
+                    send(chunk: chunkPayload(id: id, created: created,
+                                              role: nil, content: nil, finish: "stop"),
                          on: connection)
                 }
+            } else {
+                // No tools: stream deltas live as snapshots advance.
+                var lastLen = 0
+                for try await snapshot in stream {
+                    let text = snapshot.content
+                    if text.count > lastLen {
+                        let delta = String(text.suffix(text.count - lastLen))
+                        lastLen = text.count
+                        send(chunk: chunkPayload(id: id, created: created,
+                                                  role: nil, content: delta, finish: nil),
+                             on: connection)
+                    }
+                }
+                send(chunk: chunkPayload(id: id, created: created,
+                                          role: nil, content: nil, finish: "stop"),
+                     on: connection)
             }
-            send(chunk: chunkPayload(id: id, created: created,
-                                      role: nil, content: nil, finish: "stop"),
-                 on: connection)
         } catch {
             // Surface the error to the client in the same SSE stream
             // before terminating. Mirrors how OpenAI returns
@@ -620,6 +670,57 @@ public final class PFMServer: @unchecked Sendable {
             }
         }
         return false
+    }
+
+    /// Opening tool-call chunk: declares `role:assistant` plus the
+    /// tool_call metadata (id, function name) with empty arguments.
+    /// Matches the first delta OpenAI sends when a function call
+    /// starts streaming.
+    private func toolCallChunkOpener(
+        id: String, created: Int, callID: String, name: String
+    ) -> [String: Any] {
+        [
+            "id": id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": modelLabel,
+            "choices": [[
+                "index": 0,
+                "delta": [
+                    "role": "assistant",
+                    "tool_calls": [[
+                        "index": 0,
+                        "id": callID,
+                        "type": "function",
+                        "function": ["name": name, "arguments": ""],
+                    ]],
+                ],
+                "finish_reason": NSNull(),
+            ]],
+        ]
+    }
+
+    /// Second tool-call chunk: only `function.arguments` (delta-style
+    /// string concatenated by the client).
+    private func toolCallChunkArguments(
+        id: String, created: Int, arguments: String
+    ) -> [String: Any] {
+        [
+            "id": id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": modelLabel,
+            "choices": [[
+                "index": 0,
+                "delta": [
+                    "tool_calls": [[
+                        "index": 0,
+                        "function": ["arguments": arguments],
+                    ]],
+                ],
+                "finish_reason": NSNull(),
+            ]],
+        ]
     }
 
     private func chunkPayload(
