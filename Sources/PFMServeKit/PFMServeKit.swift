@@ -19,7 +19,9 @@
 // the OpenAI SDKs, `requests`, `axios`, etc.). Chunked-encoding bodies
 // are not accepted in this release.
 
+import CoreGraphics
 import Foundation
+import ImageIO
 import Network
 import PrivateFoundationModels
 
@@ -231,18 +233,24 @@ public final class PFMServer: @unchecked Sendable {
 
         let prompt: String
         let instructionsText: String
+        var collectedImages: [CGImage] = []
         if let messages = json["messages"] as? [[String: Any]] {
             // Chat-completions: render messages back into a single prompt
             // string. We surface the most recent user message as the
             // explicit `respond(to:)` argument and prepend any prior
             // system messages as instructions. Tool-result messages
-            // (role:tool) become inline context.
+            // (role:tool) become inline context. Image parts from any
+            // user message get collected and forwarded to the backend's
+            // vision path.
             var instr = ""
             var latestUser = ""
             var priorTurns: [String] = []
             for msg in messages {
                 let role = (msg["role"] as? String) ?? "user"
-                let content = Self.flattenContent(msg["content"])
+                let (content, images) = Self.flattenContent(msg["content"])
+                if role == "user" || role == "system" {
+                    collectedImages.append(contentsOf: images)
+                }
                 switch role {
                 case "system":
                     if !instr.isEmpty { instr += "\n\n" }
@@ -299,12 +307,13 @@ public final class PFMServer: @unchecked Sendable {
             // dispatch knows the connection is taken.
             await runChatCompletionStreaming(
                 instructions: instructionsText, prompt: prompt,
-                json: json, on: connection
+                images: collectedImages, json: json, on: connection
             )
             return nil
         } else {
             return await runChatCompletion(
-                instructions: instructionsText, prompt: prompt, json: json
+                instructions: instructionsText, prompt: prompt,
+                images: collectedImages, json: json
             )
         }
     }
@@ -314,6 +323,7 @@ public final class PFMServer: @unchecked Sendable {
     private func runChatCompletionStreaming(
         instructions: String,
         prompt: String,
+        images: [CGImage],
         json: [String: Any],
         on connection: NWConnection
     ) async {
@@ -366,7 +376,14 @@ public final class PFMServer: @unchecked Sendable {
 
         do {
             var lastLen = 0
-            let stream = session.streamResponse(to: prompt, options: options)
+            // PFM's session takes one optional CGImage; pick the first
+            // attached image. Text-only backends silently drop it.
+            let stream: ResponseStream<String>
+            if let firstImage = images.first {
+                stream = session.streamResponse(to: prompt, image: firstImage, options: options)
+            } else {
+                stream = session.streamResponse(to: prompt, options: options)
+            }
             for try await snapshot in stream {
                 let text = snapshot.content
                 if text.count > lastLen {
@@ -409,26 +426,79 @@ public final class PFMServer: @unchecked Sendable {
 
     /// OpenAI's `content` field on a message can be either a string or
     /// an array of content parts (`[{"type":"text","text":...},
-    /// {"type":"image_url","image_url":{...}}]`). Collapse it to a
-    /// single string so PFM's text-only prompt rendering works. Image
-    /// parts are silently dropped today; vision-aware routing comes
-    /// in v0.8.1.
-    static func flattenContent(_ raw: Any?) -> String {
-        if let s = raw as? String { return s }
+    /// {"type":"image_url","image_url":{...}}]`). Collapse the text
+    /// pieces into a single string and return any embedded images so
+    /// the caller can route them to a vision-aware backend via
+    /// `respond(to:image:)`.
+    static func flattenContent(_ raw: Any?) -> (text: String, images: [CGImage]) {
+        if let s = raw as? String { return (s, []) }
         if let parts = raw as? [[String: Any]] {
             var pieces: [String] = []
+            var images: [CGImage] = []
             for part in parts {
                 let type = (part["type"] as? String) ?? ""
-                if type == "text", let text = part["text"] as? String {
-                    pieces.append(text)
+                switch type {
+                case "text":
+                    if let text = part["text"] as? String {
+                        pieces.append(text)
+                    }
+                case "image_url":
+                    // OpenAI sends either {"url": "data:image/...;base64,..."}
+                    // or {"url": "https://..."}. We decode data URIs
+                    // inline; remote https:// URLs are fetched
+                    // synchronously via NSURLSessionDataTask in the
+                    // legacy form below.
+                    let urlEntry = part["image_url"] as? [String: Any]
+                    let urlString: String?
+                    if let s = urlEntry?["url"] as? String { urlString = s }
+                    else if let s = part["image_url"] as? String { urlString = s }
+                    else { urlString = nil }
+                    if let urlString, let image = decodeImage(fromURLString: urlString) {
+                        images.append(image)
+                    }
+                default:
+                    break  // input_audio etc.
                 }
-                // image_url / input_audio / etc. are dropped here. The
-                // multimodal lane (v0.8.1) will route them through
-                // `respond(to:image:)`.
             }
-            return pieces.joined(separator: "\n")
+            return (pieces.joined(separator: "\n"), images)
         }
-        return ""
+        return ("", [])
+    }
+
+    /// Decode an OpenAI `image_url.url` into a CGImage. Supports
+    /// `data:image/<mime>;base64,...` URIs out of the box; for
+    /// `https://...` URLs we do a synchronous fetch (acceptable since
+    /// this only runs inside the request task on the server's queue).
+    static func decodeImage(fromURLString urlString: String) -> CGImage? {
+        if urlString.hasPrefix("data:") {
+            // Format: data:[<mediatype>][;base64],<data>
+            guard let commaIdx = urlString.firstIndex(of: ",") else { return nil }
+            let header = urlString[urlString.startIndex..<commaIdx]
+            let payload = String(urlString[urlString.index(after: commaIdx)...])
+            let isBase64 = header.contains(";base64")
+            let data: Data?
+            if isBase64 {
+                data = Data(base64Encoded: payload)
+                    ?? Data(base64Encoded: payload.replacingOccurrences(of: "\n", with: ""))
+            } else {
+                data = payload.removingPercentEncoding?.data(using: .utf8)
+            }
+            guard let data else { return nil }
+            return Self.imageFromData(data)
+        }
+        if let url = URL(string: urlString) {
+            // Synchronous fetch — small images only. Most users will
+            // send base64 data URIs.
+            if let data = try? Data(contentsOf: url) {
+                return Self.imageFromData(data)
+            }
+        }
+        return nil
+    }
+
+    private static func imageFromData(_ data: Data) -> CGImage? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return CGImageSourceCreateImageAtIndex(src, 0, nil)
     }
 
     /// Render an OpenAI `tools[]` array (each entry shaped as
@@ -535,6 +605,7 @@ public final class PFMServer: @unchecked Sendable {
     private func runChatCompletion(
         instructions: String,
         prompt: String,
+        images: [CGImage],
         json: [String: Any]
     ) async -> HTTPResponse {
         let session: LanguageModelSession
@@ -570,7 +641,16 @@ public final class PFMServer: @unchecked Sendable {
             maximumResponseTokens: maxTokens
         )
         do {
-            let response = try await session.respond(to: prompt, options: options)
+            // PFM's session takes one optional CGImage; the first
+            // attached image is forwarded. Vision-aware backends
+            // (CoreML Gemma 4 E2B, MLX VLMs) light up; text-only
+            // backends silently drop the attachment.
+            let response: Response<String>
+            if let firstImage = images.first {
+                response = try await session.respond(to: prompt, image: firstImage, options: options)
+            } else {
+                response = try await session.respond(to: prompt, options: options)
+            }
             // Tool-call detection runs first — when the caller passed
             // `tools` and the model emitted a `{"tool_call":...}`
             // object, return that as OpenAI tool_calls and finish.
