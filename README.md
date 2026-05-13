@@ -9,11 +9,11 @@
 
 <p align="center">
   <a href="docs/RUNTIME_COMPARISON.md">
-    <img src="docs/media/runtime-comparison-m4max.png" alt="Same Qwen3.5-0.8B on M4 Max and iPhone Air: MLX/GPU 4-bit beats CoreML/ANE FP16 on both. M4 Max — 12× TTFT, 5× throughput. iPhone Air — 7× TTFT, 2.6× throughput." width="820">
+    <img src="docs/media/runtime-comparison-m4max.png" alt="Same Qwen3.5-0.8B on M4 Max and iPhone Air, decode-only throughput. MLX/GPU 4-bit beats CoreML/ANE FP16 on both. M4 Max — 12.2× TTFT, 5.8× decode. iPhone Air — 7× TTFT, 2.9× decode." width="820">
   </a>
 </p>
 
-<p align="center"><em>Same model, same prompt, same call site — different runtime. Mac and iPhone numbers, verified end-to-end. <a href="docs/RUNTIME_COMPARISON.md">Full table + caveats.</a></em></p>
+<p align="center"><em>Same model, same prompt, same call site — different runtime. Mac and iPhone, decode-only throughput (prefill is on the left chart, so we don't double-count it here). <a href="docs/RUNTIME_COMPARISON.md">Full table, caveats, and the token-per-second sanity check.</a></em></p>
 
 ## 30-second value prop
 

@@ -144,11 +144,32 @@ public struct BenchRow {
 }
 
 extension BenchRow {
+    /// `chars / (total / 1000)`. End-to-end user-perceived throughput
+    /// — TTFT counts against this number, so a backend with slow
+    /// prefill but fast decode looks slower than it actually is.
+    /// Useful for "how does this feel to the user."
+    public var medianCharsPerSec: Double {
+        let medTotal = median(totalMs)
+        let medChars = Double(median(outputChars))
+        return medTotal > 0 ? medChars / (medTotal / 1000.0) : 0
+    }
+
+    /// `chars / ((total - ttft) / 1000)`. Decode-only throughput —
+    /// strips prefill out so the result reflects the runtime's pure
+    /// token-generation rate. Use this for apples-to-apples runtime
+    /// comparisons.
+    public var medianDecodeCharsPerSec: Double {
+        let medTotal = median(totalMs)
+        let medTTFT = median(ttftMs)
+        let medChars = Double(median(outputChars))
+        let decodeMs = medTotal - medTTFT
+        return decodeMs > 0 ? medChars / (decodeMs / 1000.0) : 0
+    }
+
     public func summary() -> String {
         let medTTFT = median(ttftMs)
         let medTotal = median(totalMs)
         let medChars = Double(median(outputChars))
-        let charsPerSec = medTotal > 0 ? (medChars / (medTotal / 1000.0)) : 0
         return String(
             format: """
             ────────────────────────────────────────────────────────────────
@@ -158,11 +179,13 @@ extension BenchRow {
               time-to-first-tok: %.0f ms (median, %d runs)
               total respond:     %.0f ms (median)
               output chars:      %.0f (median)
-              throughput:        %.1f chars/sec
+              throughput (E2E):  %.1f chars/sec
+              throughput (dec):  %.1f chars/sec (decode-only)
             """,
             label, loadMs,
             medTTFT, ttftMs.count,
-            medTotal, medChars, charsPerSec
+            medTotal, medChars,
+            medianCharsPerSec, medianDecodeCharsPerSec
         )
     }
 
@@ -170,10 +193,10 @@ extension BenchRow {
         let medTTFT = median(ttftMs)
         let medTotal = median(totalMs)
         let medChars = Double(median(outputChars))
-        let charsPerSec = medTotal > 0 ? (medChars / (medTotal / 1000.0)) : 0
         return String(
-            format: "| %@ | %.0f ms | %.0f ms | %.0f ms | %.0f | %.1f |",
-            label, loadMs, medTTFT, medTotal, medChars, charsPerSec
+            format: "| %@ | %.0f ms | %.0f ms | %.0f ms | %.0f | %.1f | %.1f |",
+            label, loadMs, medTTFT, medTotal, medChars,
+            medianCharsPerSec, medianDecodeCharsPerSec
         )
     }
 
@@ -184,20 +207,20 @@ extension BenchRow {
         let medTTFT = median(ttftMs)
         let medTotal = median(totalMs)
         let medChars = Double(median(outputChars))
-        let charsPerSec = medTotal > 0 ? (medChars / (medTotal / 1000.0)) : 0
         // Quote fields that may contain commas / spaces. The label and
         // hardware tag are the only realistic offenders.
         let quotedLabel = "\"\(label.replacingOccurrences(of: "\"", with: "\"\""))\""
         let quotedHW = "\"\(hardware.replacingOccurrences(of: "\"", with: "\"\""))\""
         return String(
-            format: "%@,%@,%@,%.0f,%.0f,%.0f,%.0f,%.1f",
+            format: "%@,%@,%@,%.0f,%.0f,%.0f,%.0f,%.1f,%.1f",
             timestamp, quotedHW, quotedLabel,
-            loadMs, medTTFT, medTotal, medChars, charsPerSec
+            loadMs, medTTFT, medTotal, medChars,
+            medianCharsPerSec, medianDecodeCharsPerSec
         )
     }
 
     public static let csvHeader =
-        "timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec"
+        "timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec,decode_chars_per_sec"
 }
 
 /// Convenience for stamping CSV rows.

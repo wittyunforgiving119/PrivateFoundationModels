@@ -10,15 +10,15 @@ Same prompt, same options, three iterations per backend, median reported. Genera
 - `GenerationOptions(temperature: 0.0, maximumResponseTokens: 80)`
 - One warmup pass (untimed) before the three measured iterations.
 
-| Backend | Model | Load | Time-to-first-token | Total respond | Output chars | Throughput |
-|---|---|---|---|---|---|---|
-| Apple FM (`.general`) | Apple's 3 B on-device LLM | **0 ms** | 310 ms | 595 ms | 147 | 247.0 chars/sec |
-| Apple FM (`.contentTagging`) | Apple's content-tagging variant | 1 ms | 502 ms | 530 ms | 53 | 100.0 chars/sec |
-| CoreML / ANE | LFM2.5-350M | 8235 ms | 533 ms | 648 ms | 25 | 38.6 chars/sec |
-| CoreML / ANE | Qwen3.5-0.8B | 13018 ms | 530 ms | 1954 ms | 303 | 155.1 chars/sec |
-| MLX / GPU | Qwen3.5-0.8B 4-bit | 997 ms | **42 ms** | **108 ms** | 89 | **821.2 chars/sec** |
+| Backend | Model | Load | Time-to-first-token | Total respond | Output chars | E2E chars/sec | Decode chars/sec |
+|---|---|---|---|---|---|---|---|
+| Apple FM (`.general`) | Apple's 3 B on-device LLM | **0 ms** | 298 ms | 581 ms | 147 | 253.1 | 519.4 |
+| Apple FM (`.contentTagging`) | Apple's content-tagging variant | 1 ms | 496 ms | 523 ms | 53 | 101.4 | 1963.0 |
+| CoreML / ANE | LFM2.5-350M | 2579 ms | 530 ms | 644 ms | 25 | 38.8 | 219.3 |
+| CoreML / ANE | Qwen3.5-0.8B | 13224 ms | 526 ms | 1921 ms | 303 | 157.7 | **217.2** |
+| MLX / GPU | Qwen3.5-0.8B 4-bit | 1028 ms | **43 ms** | **114 ms** | 89 | 781.2 | **1253.5** |
 
-Same-model comparison: on Qwen3.5-0.8B, MLX's 4-bit GPU build clears time-to-first-token by ~12× over CoreML's full-precision ANE build (42 ms vs 530 ms). CoreML produces longer answers but at lower throughput. Different optimization stories — CoreML excels at energy-per-token on iPhone, MLX excels at latency on Mac.
+Same-model comparison: on Qwen3.5-0.8B, MLX's 4-bit GPU build clears time-to-first-token by ~12× over CoreML's full-precision ANE build (43 ms vs 526 ms). On decode-only throughput — the apples-to-apples runtime number — MLX is **5.8× faster** (1 254 vs 217 chars/sec, ≈ 313 vs 54 tok/sec). CoreML produces longer answers but at lower decode rate. Different optimization stories — CoreML excels at energy-per-token on iPhone, MLX excels at latency on Mac.
 
 Apple FM `.contentTagging` is a smaller / task-specialized variant of Apple's on-device LLM, optimized for shorter outputs (the row above shows 53 chars vs 147 for the same prompt). Useful when you want quick classifications rather than free-form responses.
 
@@ -29,8 +29,9 @@ Lower is better for load / TTFT / total; higher is better for throughput.
 - **Load**: Apple FM has no load cost — the model ships with the OS. CoreML / MLX both download the bundle on first call and page weights in afterwards (the 8.2 s CoreML load is paging a chunked LFM2.5 build through the Neural Engine compiler).
 - **Time-to-first-token (TTFT)**: the gap between `streamResponse` start and the first non-empty snapshot. MLX wins here on a small quantized model. Apple FM is in the middle. CoreML LFM2.5 (a state-space model, not a transformer) is bottlenecked by the recurrent prefill.
 - **Total respond**: end-to-end wall time. Heavily dependent on how long each model decides to talk; with `maximumResponseTokens: 80` capped at the same value, models pick different stopping points (note the chars column).
-- **Output chars**: how much each model actually emitted. Apple FM was the chattiest in this run; LFM2.5 stopped early at 25 chars. Throughput is naïvely chars / total-ms.
-- **Throughput**: rough chars-per-second. Different tokenizers compress text differently, so this isn't directly tokens-per-second, but it's apples-to-apples *within this prompt set*.
+- **Output chars**: how much each model actually emitted. Apple FM was the chattiest in this run; LFM2.5 stopped early at 25 chars.
+- **E2E chars/sec** = `chars / total_ms`. User-perceived rate, with prefill rolled in. Best for "how does it feel."
+- **Decode chars/sec** = `chars / (total_ms − ttft_ms)`. The runtime's pure generation rate, with prefill stripped out. Best for runtime-vs-runtime comparison since TTFT is already a separate column. For Qwen-family tokenizers on English ≈ 4 chars/token, so 200 chars/sec ≈ 50 tok/sec.
 
 ## Reproducing
 

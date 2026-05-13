@@ -28,8 +28,16 @@ final class BenchRunner: ObservableObject {
         let ttftMs: Double
         let totalMs: Double
         let chars: Int
+        // End-to-end chars/sec — includes prefill.
         var charsPerSec: Double {
             totalMs > 0 ? Double(chars) / (totalMs / 1000.0) : 0
+        }
+        // Decode-only chars/sec — strips prefill so this reflects pure
+        // generation rate. Use this when comparing runtimes against
+        // each other, since a long TTFT shouldn't double-penalize.
+        var decodeCharsPerSec: Double {
+            let decodeMs = totalMs - ttftMs
+            return decodeMs > 0 ? Double(chars) / (decodeMs / 1000.0) : 0
         }
     }
 
@@ -99,7 +107,7 @@ final class BenchRunner: ObservableObject {
     func runAll() async {
         status = .running(stage: "Starting…")
         log = ""
-        csv = "timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec\n"
+        csv = "timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec,decode_chars_per_sec\n"
         rows = []
         let hw = deviceLabel()
         let timestamp = ISO8601DateFormatter().string(from: Date())
@@ -142,15 +150,18 @@ final class BenchRunner: ObservableObject {
             let medTotal = median(totals)
             let medChars = Double(median(chars))
             let cps = medTotal > 0 ? medChars / (medTotal / 1000.0) : 0
+            let decodeMs = medTotal - medTTFT
+            let decodeCps = decodeMs > 0 ? medChars / (decodeMs / 1000.0) : 0
             let row = Row(backend: plan.label, loadMs: loadMs,
                            ttftMs: medTTFT, totalMs: medTotal, chars: Int(medChars))
             rows.append(row)
             let escaped = plan.label.replacingOccurrences(of: "\"", with: "\"\"")
             let hwEscaped = hw.replacingOccurrences(of: "\"", with: "\"\"")
-            let csvRow = String(format: "%@,\"%@\",\"%@\",%.0f,%.0f,%.0f,%.0f,%.1f\n",
-                                 timestamp, hwEscaped, escaped, loadMs, medTTFT, medTotal, medChars, cps)
+            let csvRow = String(format: "%@,\"%@\",\"%@\",%.0f,%.0f,%.0f,%.0f,%.1f,%.1f\n",
+                                 timestamp, hwEscaped, escaped, loadMs, medTTFT, medTotal, medChars, cps, decodeCps)
             csv += csvRow
-            appendLog(String(format: "  → median: ttft %.0f ms, throughput %.1f chars/sec", medTTFT, cps))
+            appendLog(String(format: "  → median: ttft %.0f ms, %.1f cps E2E (%.1f cps decode-only)",
+                              medTTFT, cps, decodeCps))
 
             // Incremental save: persist what we have after every
             // backend so a later crash / hang / kill doesn't lose
@@ -251,8 +262,11 @@ struct BenchView: View {
                                 ForEach(runner.rows) { r in
                                     VStack(alignment: .leading) {
                                         Text(r.backend).font(.subheadline.bold())
-                                        Text(String(format: "load %.0f ms · ttft %.0f ms · total %.0f ms · %d chars · %.1f chars/sec",
-                                                     r.loadMs, r.ttftMs, r.totalMs, r.chars, r.charsPerSec))
+                                        Text(String(format: "load %.0f ms · ttft %.0f ms · total %.0f ms · %d chars",
+                                                     r.loadMs, r.ttftMs, r.totalMs, r.chars))
+                                            .font(.caption).foregroundStyle(.secondary)
+                                        Text(String(format: "%.1f chars/sec E2E  ·  %.1f chars/sec decode-only",
+                                                     r.charsPerSec, r.decodeCharsPerSec))
                                             .font(.caption).foregroundStyle(.secondary)
                                     }
                                 }

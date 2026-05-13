@@ -6,6 +6,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.10.6] — 2026-05-14
+
+### Added
+- New `decode_chars_per_sec` column on every bench row (PFMBenchKit
+  + PFMiPhoneBench CSV) plus `BenchRow.medianDecodeCharsPerSec` /
+  `medianCharsPerSec` accessors. Defined as
+  `output_chars / (total_ms − ttft_ms)` — pure decode rate with
+  prefill stripped out, the apples-to-apples runtime number.
+- Backfilled the new column into `docs/BENCHMARKS.csv` (8 rows)
+  and `docs/BENCHMARKS_MULTILANG.csv` (15 rows).
+
+### Changed
+- README hero chart switched to **decode-only** throughput on the
+  right panel — the previous E2E chart was double-counting TTFT
+  (both the left-panel ms and the right-panel cps penalized
+  prefill), making CoreML look slower than its decode loop actually
+  is. The numbers update accordingly: M4 Max MLX vs CoreML widens
+  from 5.0× → **5.8×** on decode; iPhone widens from 2.6× → **2.9×**.
+- `docs/RUNTIME_COMPARISON.md` and `docs/BENCHMARKS.md` rewritten
+  to show both throughput columns side-by-side with an explicit
+  tok/sec sanity check (CoreML decode-only ≈ 50 tok/sec on iPhone,
+  matching the widely-reported 49 tok/sec for the same Qwen3.5
+  CoreML build).
+- `pfm-bench-*` summary output and `markdownRow()` now print both
+  E2E and decode-only chars/sec.
+
+### Note
+Earlier `chars_per_sec` numbers (still preserved in the CSV) were
+honest E2E latencies — useful for "how does this feel in a user
+flow" — but they fold TTFT into the throughput denominator, so a
+slow-prefill backend looks worse than its steady-state decode
+deserves. Use `decode_chars_per_sec` when comparing runtimes.
+
 ## [0.10.5] — 2026-05-14
 
 ### Added

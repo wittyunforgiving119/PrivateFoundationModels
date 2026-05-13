@@ -1,9 +1,9 @@
-timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec
-2026-05-13T08:29:19Z,"Apple M4 Max","Apple FM (.general)",0,298,581,147,253.1
-2026-05-13T08:29:19Z,"Apple M4 Max","Apple FM (.contentTagging)",1,496,523,53,101.4
-2026-05-13T08:29:41Z,"Apple M4 Max","CoreML / ANE (qwen3.5-0.8B)",13224,526,1921,303,157.7
-2026-05-13T08:29:48Z,"Apple M4 Max","CoreML / ANE (lfm2.5-350m)",2579,530,644,25,38.8
-2026-05-13T08:29:50Z,"Apple M4 Max","MLX / GPU (Qwen3.5-0.8B-MLX-4bit)",1028,43,114,89,781.2
-2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2","Apple FM (.general)",1,282,472,122,258.3
-2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2","CoreML / ANE (Qwen3.5-0.8B)",1151978,560,2062,303,147.0
-2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2","MLX / GPU (Qwen3.5-0.8B-MLX-4bit)",86980,80,231,89,384.9
+timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec,decode_chars_per_sec
+2026-05-13T08:29:19Z,Apple M4 Max,Apple FM (.general),0,298,581,147,253.1,519.4
+2026-05-13T08:29:19Z,Apple M4 Max,Apple FM (.contentTagging),1,496,523,53,101.4,1963.0
+2026-05-13T08:29:41Z,Apple M4 Max,CoreML / ANE (qwen3.5-0.8B),13224,526,1921,303,157.7,217.2
+2026-05-13T08:29:48Z,Apple M4 Max,CoreML / ANE (lfm2.5-350m),2579,530,644,25,38.8,219.3
+2026-05-13T08:29:50Z,Apple M4 Max,MLX / GPU (Qwen3.5-0.8B-MLX-4bit),1028,43,114,89,781.2,1253.5
+2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2",Apple FM (.general),1,282,472,122,258.3,642.1
+2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2",CoreML / ANE (Qwen3.5-0.8B),1151978,560,2062,303,147.0,201.7
+2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2",MLX / GPU (Qwen3.5-0.8B-MLX-4bit),86980,80,231,89,384.9,589.4
