@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Synchronization
 
@@ -136,7 +137,23 @@ public final class LanguageModelSession: @unchecked Sendable {
         to prompt: String,
         options: GenerationOptions = GenerationOptions()
     ) async throws -> Response<String> {
-        try await runRespondString(prompt: prompt, options: options, schema: nil)
+        try await runRespondString(prompt: prompt, attachments: [], options: options, schema: nil)
+    }
+
+    /// Multimodal one-shot. Identical to `respond(to:options:)` except the
+    /// supplied `image` is passed to the backend alongside the rendered
+    /// transcript. Backends that don't support vision (most CoreML text
+    /// models, Apple FM as of iOS 26) silently fall back to a text-only
+    /// completion — they receive the prompt text and ignore the image.
+    @discardableResult
+    public func respond(
+        to prompt: String,
+        image: CGImage?,
+        options: GenerationOptions = GenerationOptions()
+    ) async throws -> Response<String> {
+        let attachments = image.map { [BackendAttachment(image: $0)] } ?? []
+        return try await runRespondString(prompt: prompt, attachments: attachments,
+                                           options: options, schema: nil)
     }
 
     // MARK: - respond (Generable)
@@ -158,7 +175,8 @@ public final class LanguageModelSession: @unchecked Sendable {
         options: GenerationOptions = GenerationOptions()
     ) async throws -> Response<T> {
         let schema: GenerationSchema? = includeSchemaInPrompt ? T.generationSchema : nil
-        let raw = try await runRespondString(prompt: prompt, options: options, schema: schema)
+        let raw = try await runRespondString(prompt: prompt, attachments: [],
+                                              options: options, schema: schema)
         // Try the raw response first, then fall back to JSON extraction
         // (strip code fences, balanced-object scan). Some backends already
         // clean their output; some don't.
@@ -179,7 +197,19 @@ public final class LanguageModelSession: @unchecked Sendable {
         to prompt: String,
         options: GenerationOptions = GenerationOptions()
     ) -> ResponseStream<String> {
-        runStreamString(prompt: prompt, options: options, schema: nil)
+        runStreamString(prompt: prompt, attachments: [], options: options, schema: nil)
+    }
+
+    /// Multimodal streaming response. See `respond(to:image:options:)` for
+    /// the backend behavior contract.
+    public func streamResponse(
+        to prompt: String,
+        image: CGImage?,
+        options: GenerationOptions = GenerationOptions()
+    ) -> ResponseStream<String> {
+        let attachments = image.map { [BackendAttachment(image: $0)] } ?? []
+        return runStreamString(prompt: prompt, attachments: attachments,
+                                options: options, schema: nil)
     }
 
     // MARK: - streamResponse (Generable)
@@ -196,13 +226,15 @@ public final class LanguageModelSession: @unchecked Sendable {
         options: GenerationOptions = GenerationOptions()
     ) -> ResponseStream<T> {
         let schema: GenerationSchema? = includeSchemaInPrompt ? T.generationSchema : nil
-        return runStreamGenerable(prompt: prompt, options: options, schema: schema, type: type)
+        return runStreamGenerable(prompt: prompt, attachments: [],
+                                   options: options, schema: schema, type: type)
     }
 
     // MARK: - Internals
 
     private func runRespondString(
         prompt: String,
+        attachments: [BackendAttachment],
         options: GenerationOptions,
         schema: GenerationSchema?
     ) async throws -> Response<String> {
@@ -222,6 +254,7 @@ public final class LanguageModelSession: @unchecked Sendable {
                 do {
                     result = try await model.backend.generate(
                         transcript: current,
+                        attachments: attachments,
                         options: options,
                         schema: schema,
                         tools: tools
@@ -270,6 +303,7 @@ public final class LanguageModelSession: @unchecked Sendable {
 
     private func runStreamString(
         prompt: String,
+        attachments: [BackendAttachment],
         options: GenerationOptions,
         schema: GenerationSchema?
     ) -> ResponseStream<String> {
@@ -292,6 +326,7 @@ public final class LanguageModelSession: @unchecked Sendable {
                     let current = state.snapshot()
                     let inner = model.backend.streamGenerate(
                         transcript: current,
+                        attachments: attachments,
                         options: options,
                         schema: schema,
                         tools: tools
@@ -363,11 +398,13 @@ public final class LanguageModelSession: @unchecked Sendable {
 
     private func runStreamGenerable<T: Generable>(
         prompt: String,
+        attachments: [BackendAttachment],
         options: GenerationOptions,
         schema: GenerationSchema?,
         type: T.Type
     ) -> ResponseStream<T> {
-        let upstream = runStreamString(prompt: prompt, options: options, schema: schema)
+        let upstream = runStreamString(prompt: prompt, attachments: attachments,
+                                        options: options, schema: schema)
 
         let (stream, continuation) = AsyncThrowingStream<ResponseStream<T>.Snapshot, Error>.makeStream()
         let finalContent = LockedValue<T>()

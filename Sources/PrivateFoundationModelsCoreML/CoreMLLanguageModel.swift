@@ -247,12 +247,30 @@ public final class CoreMLBackendImpl: LanguageModelBackend, @unchecked Sendable 
         schema: GenerationSchema?,
         tools: [AnyTool]
     ) async throws -> BackendGeneration {
+        try await generate(transcript: transcript, attachments: [],
+                            options: options, schema: schema, tools: tools)
+    }
+
+    public func generate(
+        transcript: Transcript,
+        attachments: [BackendAttachment],
+        options: GenerationOptions,
+        schema: GenerationSchema?,
+        tools: [AnyTool]
+    ) async throws -> BackendGeneration {
         try await queue.run { [underlying] in
             let messages = Self.render(transcript: transcript, schema: schema, tools: tools)
             let maxTokens = options.maximumResponseTokens ?? 2048
+            let image = Self.firstImage(in: attachments)
             let raw: String
             do {
-                raw = try await underlying.generate(messages, maxTokens: maxTokens)
+                if let image, underlying.supportsVision {
+                    raw = try await underlying.generate(messages, image: image, maxTokens: maxTokens)
+                } else {
+                    // Vision unsupported (text-only model) or no image attached
+                    // — fall back to text-only generation.
+                    raw = try await underlying.generate(messages, maxTokens: maxTokens)
+                }
             } catch is CancellationError {
                 throw GenerationError.cancelled
             } catch {
@@ -268,6 +286,17 @@ public final class CoreMLBackendImpl: LanguageModelBackend, @unchecked Sendable 
         schema: GenerationSchema?,
         tools: [AnyTool]
     ) -> AsyncThrowingStream<BackendDelta, Error> {
+        streamGenerate(transcript: transcript, attachments: [],
+                        options: options, schema: schema, tools: tools)
+    }
+
+    public func streamGenerate(
+        transcript: Transcript,
+        attachments: [BackendAttachment],
+        options: GenerationOptions,
+        schema: GenerationSchema?,
+        tools: [AnyTool]
+    ) -> AsyncThrowingStream<BackendDelta, Error> {
         AsyncThrowingStream { continuation in
             let task = Task { [underlying, weak self] in
                 guard let self else {
@@ -278,9 +307,14 @@ public final class CoreMLBackendImpl: LanguageModelBackend, @unchecked Sendable 
                     try await self.queue.run {
                         let messages = Self.render(transcript: transcript, schema: schema, tools: tools)
                         let maxTokens = options.maximumResponseTokens ?? 2048
+                        let image = Self.firstImage(in: attachments)
                         let stream: AsyncStream<String>
                         do {
-                            stream = try await underlying.stream(messages, maxTokens: maxTokens)
+                            if let image, underlying.supportsVision {
+                                stream = try await underlying.stream(messages, image: image, maxTokens: maxTokens)
+                            } else {
+                                stream = try await underlying.stream(messages, maxTokens: maxTokens)
+                            }
                         } catch {
                             throw GenerationError.backend(error)
                         }
@@ -330,6 +364,17 @@ public final class CoreMLBackendImpl: LanguageModelBackend, @unchecked Sendable 
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    // MARK: - Attachment helpers
+
+    static func firstImage(in attachments: [BackendAttachment]) -> CGImage? {
+        for attachment in attachments {
+            if case .image(let img) = attachment.kind {
+                return img
+            }
+        }
+        return nil
     }
 
     // MARK: - Transcript → CoreMLLLM.Message rendering

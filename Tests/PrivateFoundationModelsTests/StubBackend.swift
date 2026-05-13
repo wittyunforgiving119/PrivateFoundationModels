@@ -27,6 +27,13 @@ final class StubBackend: LanguageModelBackend, @unchecked Sendable {
     /// session's concurrent-request rejection deterministically.
     var artificialDelay: Duration?
 
+    /// True when the backend should opt into the multimodal override; the
+    /// session calls the attachments-aware `generate(transcript:attachments:...)`
+    /// regardless, but if this is false the test exercises the default
+    /// `LanguageModelBackend` extension that drops attachments before
+    /// delegating to the text-only method.
+    var implementsAttachments: Bool = true
+
     // All mutable state lives behind a single Mutex so it can be read /
     // written from any isolation context (sync or async) without tripping
     // Swift 6's actor-safety checks.
@@ -37,6 +44,7 @@ final class StubBackend: LanguageModelBackend, @unchecked Sendable {
         var lastOptions: GenerationOptions?
         var lastSchema: GenerationSchema?
         var lastTools: [AnyTool] = []
+        var lastAttachmentCount: Int = 0
     }
     private let state = Mutex(State())
 
@@ -48,6 +56,7 @@ final class StubBackend: LanguageModelBackend, @unchecked Sendable {
     var lastOptions: GenerationOptions? { state.withLock { $0.lastOptions } }
     var lastSchema: GenerationSchema? { state.withLock { $0.lastSchema } }
     var lastTools: [AnyTool] { state.withLock { $0.lastTools } }
+    var lastAttachmentCount: Int { state.withLock { $0.lastAttachmentCount } }
 
     func prewarm() async {}
 
@@ -70,6 +79,41 @@ final class StubBackend: LanguageModelBackend, @unchecked Sendable {
             try await Task.sleep(for: delay)
         }
         return BackendGeneration(text: reply.text, toolCalls: reply.toolCalls)
+    }
+
+    // Multimodal override. Records attachment count alongside the
+    // standard generate path; falls through to the text reply.
+    func generate(
+        transcript: Transcript,
+        attachments: [BackendAttachment],
+        options: GenerationOptions,
+        schema: GenerationSchema?,
+        tools: [AnyTool]
+    ) async throws -> BackendGeneration {
+        guard implementsAttachments else {
+            // Use the inherited default impl (which drops attachments).
+            return try await generate(transcript: transcript, options: options,
+                                       schema: schema, tools: tools)
+        }
+        state.withLock { $0.lastAttachmentCount = attachments.count }
+        return try await generate(transcript: transcript, options: options,
+                                   schema: schema, tools: tools)
+    }
+
+    func streamGenerate(
+        transcript: Transcript,
+        attachments: [BackendAttachment],
+        options: GenerationOptions,
+        schema: GenerationSchema?,
+        tools: [AnyTool]
+    ) -> AsyncThrowingStream<BackendDelta, Error> {
+        guard implementsAttachments else {
+            return streamGenerate(transcript: transcript, options: options,
+                                   schema: schema, tools: tools)
+        }
+        state.withLock { $0.lastAttachmentCount = attachments.count }
+        return streamGenerate(transcript: transcript, options: options,
+                               schema: schema, tools: tools)
     }
 
     func streamGenerate(

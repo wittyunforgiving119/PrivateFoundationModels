@@ -51,6 +51,54 @@ public protocol LanguageModelBackend: Sendable {
         schema: GenerationSchema?,
         tools: [AnyTool]
     ) -> AsyncThrowingStream<BackendDelta, Error>
+
+    /// Multimodal one-shot generation. Default implementation falls back to
+    /// the text-only `generate(transcript:options:schema:tools:)`, ignoring
+    /// attachments — so existing backends keep compiling without changes.
+    /// Override to surface a vision-capable model (Gemma 4 multimodal,
+    /// Qwen3-VL, …).
+    func generate(
+        transcript: Transcript,
+        attachments: [BackendAttachment],
+        options: GenerationOptions,
+        schema: GenerationSchema?,
+        tools: [AnyTool]
+    ) async throws -> BackendGeneration
+
+    /// Multimodal streaming variant. Default implementation falls back to
+    /// `streamGenerate(transcript:options:schema:tools:)`, ignoring
+    /// attachments.
+    func streamGenerate(
+        transcript: Transcript,
+        attachments: [BackendAttachment],
+        options: GenerationOptions,
+        schema: GenerationSchema?,
+        tools: [AnyTool]
+    ) -> AsyncThrowingStream<BackendDelta, Error>
+}
+
+extension LanguageModelBackend {
+    public func generate(
+        transcript: Transcript,
+        attachments: [BackendAttachment],
+        options: GenerationOptions,
+        schema: GenerationSchema?,
+        tools: [AnyTool]
+    ) async throws -> BackendGeneration {
+        // Default: drop the attachments. Text-only backends still work for
+        // sessions whose call sites happened to pass an image.
+        try await generate(transcript: transcript, options: options, schema: schema, tools: tools)
+    }
+
+    public func streamGenerate(
+        transcript: Transcript,
+        attachments: [BackendAttachment],
+        options: GenerationOptions,
+        schema: GenerationSchema?,
+        tools: [AnyTool]
+    ) -> AsyncThrowingStream<BackendDelta, Error> {
+        streamGenerate(transcript: transcript, options: options, schema: schema, tools: tools)
+    }
 }
 
 /// Result of a non-streaming `generate` call.

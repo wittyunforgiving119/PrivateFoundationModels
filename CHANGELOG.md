@@ -6,6 +6,43 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] — 2026-05-13
+
+### Added
+- Vision input on `LanguageModelSession`:
+  `respond(to:image:options:)` and `streamResponse(to:image:options:)`
+  both accept a `CGImage?` alongside the prompt. The image is forwarded
+  to the backend via a new `BackendAttachment` value type. Available on
+  iOS 18+ / macOS 15+ / visionOS 2+.
+- `LanguageModelBackend` gained a multimodal overload:
+  `generate(transcript:attachments:options:schema:tools:)` and the
+  streaming variant. Default extension implementations silently drop
+  attachments before delegating to the text-only methods, so existing
+  backends (`AppleFMBridgeBackend` in the PFMSwitcher sample, third-party
+  custom backends) keep compiling and working without changes.
+- `BackendAttachment` (`Sources/PrivateFoundationModels/`) — value type
+  wrapping a `CGImage` for now; the discriminator is `enum Kind` so
+  audio (v0.8 roadmap) can join without a breaking change.
+- 5 new tests (`AttachmentTests`) covering: image-with-respond plumbing,
+  image-with-streamResponse plumbing, no-image-zero-attachments,
+  nil-image-zero-attachments, text-only-backend-drops-image fallback.
+
+### Changed
+- `CoreMLBackendImpl` (default CoreML backend, the one
+  `CoreMLLanguageModel.load(.gemma4E2B)` returns) now overrides the
+  multimodal entry points and forwards the first `.image(CGImage)`
+  attachment to `CoreMLLLM.generate(messages:image:maxTokens:)` /
+  `.stream(messages:image:maxTokens:)`. Vision-capable models (Gemma 4
+  E2B multimodal build) light up; text-only models in the same
+  family transparently fall back to text-only generation.
+
+### Known limitations
+- `Qwen3Backend` (the Qwen3.5 path) does not yet override the
+  multimodal entry points — Qwen3-VL needs a different upstream Swift
+  class (`Qwen3VL2BStatefulGenerator`) than the text-only
+  `Qwen35MLKVGenerator`. v0.3 will route `.qwen3VL2BStateful` through
+  the dedicated generator.
+
 ## [0.2.0-beta.1] — 2026-05-13
 
 ### Added

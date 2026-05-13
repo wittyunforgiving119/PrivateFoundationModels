@@ -122,6 +122,26 @@ for try await snapshot in stream {
 let final = try await stream.collect()
 ```
 
+### Vision input (multimodal)
+
+```swift
+import UIKit  // or AppKit
+
+let backend = try await CoreMLLanguageModel.load(.gemma4E2B)
+SystemLanguageModel.default = SystemLanguageModel(backend: backend)
+
+let session = LanguageModelSession(instructions: "Describe images precisely.")
+let image: CGImage = UIImage(named: "scene")!.cgImage!
+
+let reply = try await session.respond(to: "What's in this photo?", image: image)
+// or stream it:
+for try await snapshot in session.streamResponse(to: "Describe.", image: image) {
+    print(snapshot.content)
+}
+```
+
+`respond(to:image:)` and `streamResponse(to:image:)` plumb a `CGImage` through to backends that override the multimodal entry point. Text-only backends (Apple FM on iOS 26, LFM2.5, the Qwen3.5 text family) fall back to a text-only completion silently — the `image:` argument is ignored. Vision-capable backends in v0.2: Gemma 4 E2B (the multimodal build of `mlboydaisuke/gemma-4-E2B-coreml`). Qwen3-VL routing lands in v0.3.
+
 ### Structured output
 
 ```swift
