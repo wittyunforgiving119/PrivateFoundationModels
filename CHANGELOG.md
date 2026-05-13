@@ -6,6 +6,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-05-13
+
+### Added
+- `AppleFoundationModel.UseCase` enum (`.general` / `.contentTagging`)
+  and `AppleFoundationModel.load(useCase:)` factory. Mirrors Apple's
+  `FoundationModels.SystemLanguageModel.UseCase`.
+- `AppleFoundationModel.Adapter` enum (`.name(String)` /
+  `.fileURL(URL)`) and `AppleFoundationModel.load(adapter:) throws`
+  factory. Mirrors Apple's `SystemLanguageModel.Adapter(name:)` /
+  `Adapter(fileURL:)` initializers so apps can load fine-tuned
+  Apple FM adapters without importing FoundationModels directly.
+
+### Changed
+- The original `AppleFoundationModel.load()` (no-arg) is unchanged
+  and still wires to `SystemLanguageModel.default`. The two new
+  overloads are additive.
+
 ## [0.6.0] — 2026-05-13
 
 ### Added

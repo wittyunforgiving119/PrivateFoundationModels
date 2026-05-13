@@ -34,9 +34,63 @@ import PrivateFoundationModels
 @available(iOS 26.0, macOS 26.0, visionOS 26.0, *)
 public enum AppleFoundationModel {
 
+    /// Which Apple FoundationModels variant to target. Mirrors
+    /// `FoundationModels.SystemLanguageModel.UseCase`. `.general` is the
+    /// chat / Q&A / writing assistant model; `.contentTagging` is the
+    /// shorter task-specific variant Apple uses for tagging /
+    /// classification on iOS.
+    public enum UseCase: Sendable, Equatable {
+        case general
+        case contentTagging
+    }
+
+    /// Identifies a locally-loadable Apple FoundationModels adapter (a
+    /// LoRA / fine-tune). Mirrors `FoundationModels.SystemLanguageModel.Adapter`
+    /// without exposing the framework type to PFM callers.
+    public enum Adapter: Sendable {
+        /// Resolve the adapter by the on-device name registered with the
+        /// system. Throws `FoundationModels.SystemLanguageModel.Adapter.AssetError`
+        /// via `GenerationError.backend(_)` if the name doesn't resolve.
+        case name(String)
+
+        /// Resolve the adapter by a `file://` URL on disk.
+        case fileURL(URL)
+    }
+
     /// Returns a backend wired to `FoundationModels.SystemLanguageModel.default`.
     public static func load() -> AppleFoundationModelBackend {
         AppleFoundationModelBackend(model: FoundationModels.SystemLanguageModel.default)
+    }
+
+    /// Returns a backend wired to a specific `UseCase` variant.
+    public static func load(
+        useCase: UseCase
+    ) -> AppleFoundationModelBackend {
+        let appleUseCase: FoundationModels.SystemLanguageModel.UseCase
+        switch useCase {
+        case .general:        appleUseCase = .general
+        case .contentTagging: appleUseCase = .contentTagging
+        }
+        return AppleFoundationModelBackend(
+            model: FoundationModels.SystemLanguageModel(useCase: appleUseCase)
+        )
+    }
+
+    /// Returns a backend wired to a loaded adapter. Throws when the
+    /// adapter can't be resolved (missing asset, invalid name, etc.).
+    public static func load(
+        adapter: Adapter
+    ) throws -> AppleFoundationModelBackend {
+        let appleAdapter: FoundationModels.SystemLanguageModel.Adapter
+        switch adapter {
+        case .name(let name):
+            appleAdapter = try FoundationModels.SystemLanguageModel.Adapter(name: name)
+        case .fileURL(let url):
+            appleAdapter = try FoundationModels.SystemLanguageModel.Adapter(fileURL: url)
+        }
+        return AppleFoundationModelBackend(
+            model: FoundationModels.SystemLanguageModel(adapter: appleAdapter)
+        )
     }
 
     /// Mirror of Apple's `SystemLanguageModel.default.availability`,

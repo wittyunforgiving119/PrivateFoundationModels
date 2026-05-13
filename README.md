@@ -473,12 +473,14 @@ Standardized `streamResponse` bench on M4 Max / macOS 26.0 (median of 3 timed it
   `BackendGeneration.transcriptDelta`. `pfm-apple-deep` PASS 14 / FAIL 0.
 - v0.5.2 — Standardized `pfm-bench-{apple,coreml,mlx}` harness.
   Apples-to-apples M4 Max baseline in [`docs/BENCHMARKS.md`](docs/BENCHMARKS.md).
-- **v0.6.0 (current)** — `respond(to:generating:T.self)` auto-retries
+- v0.6.0 — `respond(to:generating:T.self)` auto-retries
   on `decodingFailure` (default 2 retries, configurable via
   `maximumRetries:`). Retry prompts append a schema reminder.
-  Reliability win for small CoreML / MLX models without needing a
-  grammar-constrained sampler. Apple FM backend never trips it
-  because Apple's constrained sampler enforces the schema natively.
+- **v0.6.1 (current)** — `AppleFoundationModel.load(useCase:)` and
+  `load(adapter:)` overloads. Surfaces Apple's `UseCase` (`.general` /
+  `.contentTagging`) and `Adapter` (`.name(...)` / `.fileURL(...)`)
+  through PFM so apps can target the content-tagging variant or load
+  a fine-tuned LoRA without importing FoundationModels directly.
 - v0.7 — Qwen3-VL routing on CoreML, grammar-constrained sampler
   behind a feature flag, llama.cpp / GGUF backend.
 - v0.6 — llama.cpp / GGUF backend
