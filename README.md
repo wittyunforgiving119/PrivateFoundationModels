@@ -93,7 +93,7 @@ targets: [
 Four products:
 
 - **`PrivateFoundationModels`** — the API surface (`LanguageModelSession`, `Instructions`, …). Zero runtime deps. Import this everywhere.
-- **`PrivateFoundationModelsApple`** — passthrough to Apple's native FoundationModels framework on iOS 26+ / macOS 26+. Zero runtime deps beyond the system framework. Text + streaming text in v0.4; `Generable` / `Tool` cross-translation lands in v0.5.
+- **`PrivateFoundationModelsApple`** — passthrough to Apple's native FoundationModels framework on iOS 26+ / macOS 26+. Zero runtime deps beyond the system framework. Text + streaming text + `Generable` structured output / streaming Generable; `Tool` cross-translation lands in v0.5.
 - **`PrivateFoundationModelsCoreML`** — CoreML / ANE backend. Depends on [`john-rocky/CoreML-LLM`](https://github.com/john-rocky/CoreML-LLM), which runs Gemma 4 / Qwen3.5 / Qwen3-VL / LFM2.5 / FunctionGemma / EmbeddingGemma on the Apple Neural Engine. Import only in the target that wires `SystemLanguageModel.default`.
 - **`PrivateFoundationModelsMLX`** — MLX backend. Depends on [`ml-explore/mlx-swift-lm`](https://github.com/ml-explore/mlx-swift-lm), which runs any `mlx-community/*` model — Llama, Qwen, Gemma, Mistral, Phi — on Apple Silicon GPU. Same `LanguageModelSession.respond(...)` API as the CoreML and Apple backends.
 
@@ -123,7 +123,23 @@ print(try await session.respond(to: "Capital of France?").content)
 
 `AppleFoundationModel.availability` mirrors Apple's `SystemLanguageModel.default.availability` (`available`, `unavailable(.deviceNotEligible | .appleIntelligenceNotEnabled | .modelNotReady)`) so app code can branch on it without importing FoundationModels directly.
 
-Verified on macOS 26.0 — see [`docs/pfm-apple-smoke.log`](docs/pfm-apple-smoke.log). Plain text + streaming text in v0.4; `@Generable` and `Tool` cross-translation between PFM's protocols and Apple's land in v0.5 (today the backend rejects them with a clear error message so the failure isn't silent).
+**`@Generable` structured output works on Apple's native model too.** PFM's `GenerationSchema` (JSON-Schema-shaped) is translated into Apple's `DynamicGenerationSchema` and fed into `respond(to:schema:)`, so the same `respond(to:generating:Address.self)` call site that runs against CoreML on iOS 18 also runs against Apple's native LLM on iOS 26+:
+
+```swift
+@Generable
+struct Address {
+    let city: String
+    let country: String
+}
+
+let response = try await session.respond(
+    to: "Pick one famous landmark and return its city and country.",
+    generating: Address.self
+)
+print(response.content)  // Address(city: "Paris", country: "France") — from Apple's model
+```
+
+Verified on macOS 26.0 — `pfm-apple-deep` runs **PASS 9 / MODEL 0 / FAIL 0** across the full Generable × Multimodal × PromptBuilder matrix. See [`docs/pfm-apple-deep.log`](docs/pfm-apple-deep.log). `Tool` cross-translation (so PFM `Tool` instances are exposed to Apple's session as Apple `Tool` adapters) lands in v0.5; the backend rejects tool calls with a clear error today so failure is loud, not silent.
 
 ### MLX backend (alternative)
 
@@ -389,7 +405,8 @@ Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1 / Xcode 26.1, against `mlboy
 | `swift run -c release pfm-portability` | Real Apple-FM-shaped code compiled and ran unchanged | **8 / 8 pass** ([log](docs/pfm-portability.log)) |
 | `swift run -c release pfm-deep` | Every Generable shape × Tool pattern against the real CoreML model | **PASS 7 / MODEL 4 / FAIL 0** ([log](docs/pfm-deep.log)) |
 | `pfm-mlx-deep` (xcodebuild) | Same scenario matrix routed through MLX-Swift on a real `mlx-community/*` model | **PASS 9 / MODEL 5 / FAIL 0** ([log](docs/pfm-mlx-deep.log)) |
-| `swift run -c release pfm-apple-smoke` | `respond(to:)` + `streamResponse(to:)` through PFM hitting **Apple's actual native FoundationModels** | ✓ load 0 s, ✓ respond 1.2 s, ✓ stream ([log](docs/pfm-apple-smoke.log)) |
+| `swift run -c release pfm-apple-smoke` | `respond(to:)` + `streamResponse(to:)` + **Generable** through PFM hitting **Apple's actual native FoundationModels** | ✓ load 0 s, ✓ respond 0.7 s, ✓ stream, ✓ Generable 1.3 s ([log](docs/pfm-apple-smoke.log)) |
+| `swift run -c release pfm-apple-deep` | Full Generable × Multimodal × PromptBuilder matrix through PFM hitting Apple's native FoundationModels | **PASS 9 / MODEL 0 / FAIL 0** ([log](docs/pfm-apple-deep.log)) |
 
 `MODEL` = API works, content quality limited by the small model used for verification (a larger model lands the test in PASS). `FAIL` = framework / backend regression — zero is the only acceptable number across every backend.
 
@@ -401,13 +418,15 @@ Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1 / Xcode 26.1, against `mlboy
   `Guardrails` parity + vision input on the session API
 - v0.3 — Streaming `Generable` partial-snapshot decode +
   MLX-Swift backend (`mlx-community/*` models, including `*-VL-*` VLMs)
-- **v0.4 (current)** — Apple FoundationModels passthrough backend
+- v0.4 — Apple FoundationModels passthrough backend
   (`PrivateFoundationModelsApple`): on iOS 26+ / macOS 26+ /
   visionOS 26+ the same call site routes to Apple's actual native
-  on-device model. Text + streaming text; `Generable` / `Tool`
-  cross-translation queued for v0.5.
-- v0.5 — `@Generable` / `Tool` cross-translation for Apple FM backend +
-  Qwen3-VL routing on CoreML
+  on-device model.
+- **v0.4.1 (current)** — `@Generable` structured output cross-translation
+  for Apple FM (PFM `GenerationSchema` → Apple `DynamicGenerationSchema`,
+  Apple `GeneratedContent` → JSON for PFM's decoder); `pfm-apple-deep`
+  matrix runs **PASS 9 / FAIL 0** against Apple's native model.
+- v0.5 — `Tool` cross-translation for Apple FM + Qwen3-VL routing on CoreML
 - v0.6 — llama.cpp / GGUF backend
 - v0.7 — Grammar-constrained decoding
 - v0.8 — Audio input on the session API + speculative decoding

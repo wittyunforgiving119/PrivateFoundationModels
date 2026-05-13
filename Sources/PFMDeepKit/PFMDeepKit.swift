@@ -272,7 +272,7 @@ public struct DeepRunner {
 
     // MARK: Generable
 
-    mutating func runGenerableScenarios() async {
+    public mutating func runGenerableScenarios() async {
         banner("Generable scenarios (structured output)")
 
         await runGenerable("G1. simple-object (2 strings)",
@@ -396,7 +396,7 @@ public struct DeepRunner {
 
     // MARK: Tools
 
-    mutating func runToolScenarios() async {
+    public mutating func runToolScenarios() async {
         banner("Tool calling scenarios")
 
         await runTools(
@@ -448,7 +448,7 @@ public struct DeepRunner {
 
     // MARK: Multimodal + PromptBuilder
 
-    mutating func runMultimodalScenarios() async {
+    public mutating func runMultimodalScenarios() async {
         banner("Multimodal + builder scenarios")
 
         info("M1. respond(to:image:) — prompt: Describe what you see.")

@@ -1,12 +1,12 @@
 [0/1] Planning build
 Building for production...
 [0/5] Write sources
-[2/6] Write swift-version--58304C5D6DBC2206.txt
-[4/6] Compiling PrivateFoundationModelsApple AppleFoundationModelBackend.swift
-[5/7] Compiling PFMAppleSmoke main.swift
+[2/5] Write swift-version--58304C5D6DBC2206.txt
+[4/5] Compiling PrivateFoundationModelsApple AppleFoundationModelBackend.swift
+[5/6] Compiling PFMAppleSmoke main.swift
 [5/7] Write Objects.LinkFileList
 [6/7] Linking pfm-apple-smoke
-Build of product 'pfm-apple-smoke' complete! (2.67s)
+Build of product 'pfm-apple-smoke' complete! (3.75s)
 
 ──────────────────────────────────────────────────────────────────────────────
  PrivateFoundationModelsApple — Apple FM passthrough smoke test
@@ -16,7 +16,7 @@ Build of product 'pfm-apple-smoke' complete! (2.67s)
 ──────────────────────────────────────────────────────────────────────────────
  1. respond(to:)
 ──────────────────────────────────────────────────────────────────────────────
-  ✓ respond() returned in 1209 ms
+  ✓ respond() returned in 697 ms
 
 --- response ---
 The capital of France is Paris.
@@ -30,6 +30,11 @@ The capital of France is Paris.
 The capital of France is Paris.
 -----------------
   ✓ stream completed
+
+──────────────────────────────────────────────────────────────────────────────
+ 3. respond(to: generating:) — Generable cross-translation
+──────────────────────────────────────────────────────────────────────────────
+  ✓ generating: Address.self → Rome, Italy (1252 ms)
 
 ──────────────────────────────────────────────────────────────────────────────
  All smoke checks passed against Apple's native FoundationModels.

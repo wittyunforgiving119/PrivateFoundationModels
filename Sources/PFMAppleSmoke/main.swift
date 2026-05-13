@@ -83,6 +83,39 @@ func run() async {
         exit(4)
     }
 
+    struct Address: Generable, Equatable, CustomStringConvertible {
+        let city: String
+        let country: String
+        static var generationSchema: GenerationSchema {
+            GenerationSchema(
+                type: "object",
+                properties: [
+                    "city":    .init(type: "string"),
+                    "country": .init(type: "string"),
+                ],
+                required: ["city", "country"]
+            )
+        }
+        var description: String { "\(city), \(country)" }
+    }
+
+    do {
+        banner("3. respond(to: generating:) — Generable cross-translation")
+        let session = LanguageModelSession(
+            instructions: Instructions("Return strict JSON for a famous landmark.")
+        )
+        let start = ContinuousClock.now
+        let response = try await session.respond(
+            to: "Pick one famous landmark and return its city and country.",
+            generating: Address.self,
+            options: GenerationOptions(temperature: 0.0, maximumResponseTokens: 120)
+        )
+        ok("generating: Address.self → \(response.content) (\(ms(ContinuousClock.now - start)))")
+    } catch {
+        fail("Generable failed: \(error)")
+        exit(5)
+    }
+
     banner("All smoke checks passed against Apple's native FoundationModels.")
 }
 

@@ -8,14 +8,18 @@
 // own on-device LLM here, with zero code changes other than the
 // backend install line.
 //
-// Limitations in v0.4 (the first release of this backend):
-// - Plain text + streaming text only.
-// - `Generable` (structured output) is rejected with a clear error —
-//   our `Generable` and Apple's `Generable` are separate Swift
-//   protocols, so a cross-protocol bridge needs macro-time work
-//   (planned for v0.5). Use the CoreML or MLX backend if you need
-//   structured output today.
-// - `Tool` is rejected for the same reason.
+// What this backend supports (v0.4.1+):
+// - Plain text + streaming text.
+// - `Generable` structured output and streaming Generable, including
+//   nested objects, arrays, optionals, and primitive mixes — PFM's
+//   `GenerationSchema` (JSON-Schema-shaped) is translated into Apple's
+//   `GenerationSchema` via `DynamicGenerationSchema`. The decoded
+//   `GeneratedContent` is re-serialized to JSON so PFM's existing
+//   `Generable` JSON decoder takes over.
+//
+// What's not supported yet:
+// - `Tool` is rejected with a clear error — cross-protocol Tool
+//   bridging is queued for v0.5.
 // - Vision attachments are silently dropped (Apple FM is text-only
 //   in iOS 26).
 
@@ -99,18 +103,32 @@ public final class AppleFoundationModelBackend: LanguageModelBackend, @unchecked
         schema: PrivateFoundationModels.GenerationSchema?,
         tools: [PrivateFoundationModels.AnyTool]
     ) async throws -> BackendGeneration {
-        try guardUnsupported(schema: schema, tools: tools)
+        try guardUnsupported(tools: tools)
         let prepared = Self.prepare(transcript: transcript)
         let session = FoundationModels.LanguageModelSession(
             model: appleModel,
             transcript: prepared.history
         )
+        let appleOptions = Self.toAppleOptions(options)
         do {
-            let response = try await session.respond(
-                to: prepared.lastPrompt,
-                options: Self.toAppleOptions(options)
-            )
-            return BackendGeneration(text: response.content)
+            if let pfmSchema = schema {
+                let appleSchema = try FoundationModels.GenerationSchema(
+                    root: Self.pfmSchemaToDynamic(pfmSchema, name: "Root"),
+                    dependencies: []
+                )
+                let response = try await session.respond(
+                    to: prepared.lastPrompt,
+                    schema: appleSchema,
+                    options: appleOptions
+                )
+                return BackendGeneration(text: Self.generatedContentToJSON(response.content))
+            } else {
+                let response = try await session.respond(
+                    to: prepared.lastPrompt,
+                    options: appleOptions
+                )
+                return BackendGeneration(text: response.content)
+            }
         } catch is CancellationError {
             throw GenerationError.cancelled
         } catch {
@@ -129,24 +147,44 @@ public final class AppleFoundationModelBackend: LanguageModelBackend, @unchecked
         AsyncThrowingStream { continuation in
             let task = Task { [self] in
                 do {
-                    try guardUnsupported(schema: schema, tools: tools)
+                    try guardUnsupported(tools: tools)
                     let prepared = Self.prepare(transcript: transcript)
                     let session = FoundationModels.LanguageModelSession(
                         model: appleModel,
                         transcript: prepared.history
                     )
-                    let stream = session.streamResponse(
-                        to: prepared.lastPrompt,
-                        options: Self.toAppleOptions(options)
-                    )
-                    var lastContent = ""
-                    for try await snapshot in stream {
-                        // For Content == String, Snapshot.content is a
-                        // String (PartiallyGenerated == Self).
-                        lastContent = snapshot.content
-                        continuation.yield(.text(cumulative: lastContent, complete: false))
+                    let appleOptions = Self.toAppleOptions(options)
+
+                    if let pfmSchema = schema {
+                        let appleSchema = try FoundationModels.GenerationSchema(
+                            root: Self.pfmSchemaToDynamic(pfmSchema, name: "Root"),
+                            dependencies: []
+                        )
+                        let stream = session.streamResponse(
+                            to: prepared.lastPrompt,
+                            schema: appleSchema,
+                            options: appleOptions
+                        )
+                        var lastJSON = "{}"
+                        for try await snapshot in stream {
+                            // snapshot.content is GeneratedContent
+                            // (PartiallyGenerated == Self for Generable).
+                            lastJSON = Self.generatedContentToJSON(snapshot.content)
+                            continuation.yield(.text(cumulative: lastJSON, complete: false))
+                        }
+                        continuation.yield(.text(cumulative: lastJSON, complete: true))
+                    } else {
+                        let stream = session.streamResponse(
+                            to: prepared.lastPrompt,
+                            options: appleOptions
+                        )
+                        var lastContent = ""
+                        for try await snapshot in stream {
+                            lastContent = snapshot.content
+                            continuation.yield(.text(cumulative: lastContent, complete: false))
+                        }
+                        continuation.yield(.text(cumulative: lastContent, complete: true))
                     }
-                    continuation.yield(.text(cumulative: lastContent, complete: true))
                     continuation.finish()
                 } catch is CancellationError {
                     continuation.finish(throwing: GenerationError.cancelled)
@@ -163,24 +201,101 @@ public final class AppleFoundationModelBackend: LanguageModelBackend, @unchecked
     // MARK: - Helpers
 
     private func guardUnsupported(
-        schema: PrivateFoundationModels.GenerationSchema?,
         tools: [PrivateFoundationModels.AnyTool]
     ) throws {
-        if schema != nil {
-            throw GenerationError.backend(NSError(
-                domain: "PrivateFoundationModelsApple",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey:
-                    "AppleFoundationModelBackend does not cross-translate Generable types in v0.4. Use the CoreML or MLX backend for structured output, or wait for v0.5."]
-            ))
-        }
         if !tools.isEmpty {
             throw GenerationError.backend(NSError(
                 domain: "PrivateFoundationModelsApple",
                 code: 2,
                 userInfo: [NSLocalizedDescriptionKey:
-                    "AppleFoundationModelBackend does not cross-translate Tool types in v0.4. Use the CoreML or MLX backend for tool calling, or wait for v0.5."]
+                    "AppleFoundationModelBackend does not cross-translate Tool types yet (planned for v0.5). Use the CoreML or MLX backend for tool calling today."]
             ))
+        }
+    }
+
+    // MARK: - Schema translation
+
+    /// Translate PFM's JSON-Schema-shaped `GenerationSchema` into Apple's
+    /// `DynamicGenerationSchema`. The latter is fed to
+    /// `FoundationModels.GenerationSchema(root:dependencies:)` so we can
+    /// invoke `session.respond(to:schema:)` without our types having to
+    /// conform to Apple's `Generable` protocol.
+    private static func pfmSchemaToDynamic(
+        _ schema: PrivateFoundationModels.GenerationSchema,
+        name: String
+    ) -> FoundationModels.DynamicGenerationSchema {
+        switch schema.type {
+        case "object":
+            let props = (schema.properties ?? [:]).map { (key, sub) in
+                FoundationModels.DynamicGenerationSchema.Property(
+                    name: key,
+                    description: sub.description,
+                    schema: pfmSchemaToDynamic(sub, name: "\(name).\(key)"),
+                    isOptional: !(schema.required ?? []).contains(key)
+                )
+            }
+            return FoundationModels.DynamicGenerationSchema(
+                name: name,
+                description: schema.description,
+                properties: props
+            )
+        case "array":
+            let item = schema.items.map { pfmSchemaToDynamic($0.value, name: "\(name).item") }
+                ?? FoundationModels.DynamicGenerationSchema(type: String.self)
+            return FoundationModels.DynamicGenerationSchema(
+                arrayOf: item, minimumElements: nil, maximumElements: nil
+            )
+        case "string":
+            if let choices = schema.enum, !choices.isEmpty {
+                return FoundationModels.DynamicGenerationSchema(
+                    name: name, description: schema.description, anyOf: choices
+                )
+            }
+            return FoundationModels.DynamicGenerationSchema(type: String.self)
+        case "integer":
+            return FoundationModels.DynamicGenerationSchema(type: Int.self)
+        case "number":
+            return FoundationModels.DynamicGenerationSchema(type: Double.self)
+        case "boolean":
+            return FoundationModels.DynamicGenerationSchema(type: Bool.self)
+        default:
+            return FoundationModels.DynamicGenerationSchema(type: String.self)
+        }
+    }
+
+    /// Render an Apple `GeneratedContent` value as a JSON string so PFM's
+    /// existing `Generable` decoder can consume it.
+    private static func generatedContentToJSON(
+        _ content: FoundationModels.GeneratedContent
+    ) -> String {
+        let any = generatedContentToAny(content)
+        if let data = try? JSONSerialization.data(
+            withJSONObject: any, options: [.fragmentsAllowed, .sortedKeys]
+        ),
+           let s = String(data: data, encoding: .utf8) {
+            return s
+        }
+        return "{}"
+    }
+
+    private static func generatedContentToAny(
+        _ content: FoundationModels.GeneratedContent
+    ) -> Any {
+        switch content.kind {
+        case .null: return NSNull()
+        case .bool(let b): return b
+        case .number(let n): return n
+        case .string(let s): return s
+        case .array(let arr):
+            return arr.map { generatedContentToAny($0) }
+        case .structure(let props, let orderedKeys):
+            var dict = [String: Any]()
+            for k in orderedKeys {
+                if let v = props[k] { dict[k] = generatedContentToAny(v) }
+            }
+            return dict
+        @unknown default:
+            return NSNull()
         }
     }
 

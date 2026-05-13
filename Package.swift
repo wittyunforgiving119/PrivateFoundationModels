@@ -77,10 +77,18 @@ let package = Package(
         // Smoke test for the Apple FoundationModels passthrough
         // backend. Loads `FoundationModels.SystemLanguageModel.default`
         // (Apple's native on-device model) and runs respond /
-        // streamResponse through PFM's call sites. Only meaningful on
-        // iOS 26+ / macOS 26+ devices with Apple Intelligence enabled.
+        // streamResponse / Generable through PFM's call sites. Only
+        // meaningful on iOS 26+ / macOS 26+ devices with Apple
+        // Intelligence enabled.
         //   swift run -c release pfm-apple-smoke
         .executable(name: "pfm-apple-smoke", targets: ["PFMAppleSmoke"]),
+
+        // Same Generable / Multimodal / PromptBuilder matrix as
+        // `pfm-deep` and `pfm-mlx-deep`, but routed through Apple's
+        // native FoundationModels. Tool scenarios are skipped
+        // (cross-protocol Tool bridging is v0.5 work).
+        //   swift run -c release pfm-apple-deep
+        .executable(name: "pfm-apple-deep", targets: ["PFMAppleDeep"]),
     ],
     dependencies: [
         .package(url: "https://github.com/john-rocky/CoreML-LLM", from: "1.8.0"),
@@ -226,6 +234,17 @@ let package = Package(
         .executableTarget(
             name: "PFMAppleSmoke",
             dependencies: [
+                "PrivateFoundationModels",
+                "PrivateFoundationModelsApple",
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+        .executableTarget(
+            name: "PFMAppleDeep",
+            dependencies: [
+                "PFMDeepKit",
                 "PrivateFoundationModels",
                 "PrivateFoundationModelsApple",
             ],
