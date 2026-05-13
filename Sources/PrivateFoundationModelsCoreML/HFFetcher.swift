@@ -78,6 +78,29 @@ public actor HFFetcher {
         }
     }
 
+    /// Download a hand-picked list of file paths from `repo` into `directory`.
+    /// Used when only a subset of a repo (typically tokenizer files from the
+    /// source HuggingFace repo) is needed alongside a CoreML bundle.
+    public func ensureFiles(
+        _ paths: [String],
+        repo: String,
+        in directory: URL,
+        token: String? = nil,
+        onProgress: (@Sendable (ProgressEvent) -> Void)? = nil
+    ) async throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let total = paths.count
+        for (idx, path) in paths.enumerated() {
+            let dest = directory.appendingPathComponent(path)
+            if FileManager.default.fileExists(atPath: dest.path) {
+                onProgress?(.init(path: path, index: idx + 1, total: total, bytes: nil, cached: true))
+                continue
+            }
+            onProgress?(.init(path: path, index: idx + 1, total: total, bytes: nil, cached: false))
+            try await downloadFile(path: path, repo: repo, to: dest, token: token)
+        }
+    }
+
     // MARK: - Tree
 
     private func fetchTree(repo: String, token: String?) async throws -> [HFFile] {
@@ -106,15 +129,55 @@ public actor HFFetcher {
         var request = URLRequest(url: url)
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
 
-        let (tempURL, response) = try await session.download(for: request)
-        try check(response: response, url: url)
-
-        try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(),
-                                                 withIntermediateDirectories: true)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        // Retry on transient network failures. HF's Xet LFS backend
+        // (cas-bridge.xethub.hf.co) drops multi-GB downloads more often
+        // than fresh S3 would; on a dropped connection the temp file
+        // URLSession wrote to is discarded by the runtime, so a clean
+        // retry is safe.
+        let maxAttempts = 4
+        var lastError: Error?
+        for attempt in 1...maxAttempts {
+            do {
+                let (tempURL, response) = try await session.download(for: request)
+                try check(response: response, url: url)
+                try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(),
+                                                        withIntermediateDirectories: true)
+                if FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.removeItem(at: destination)
+                }
+                try FileManager.default.moveItem(at: tempURL, to: destination)
+                return
+            } catch {
+                lastError = error
+                if !isRetriable(error) || attempt == maxAttempts {
+                    throw error
+                }
+                // Backoff: 1s, 2s, 4s.
+                let delayNanos = UInt64(1_000_000_000) << (attempt - 1)
+                try? await Task.sleep(nanoseconds: delayNanos)
+            }
         }
-        try FileManager.default.moveItem(at: tempURL, to: destination)
+        throw lastError ?? FetchError.httpStatus(code: -1, url: url)
+    }
+
+    private func isRetriable(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorTimedOut,
+                 NSURLErrorCannotConnectToHost,
+                 NSURLErrorNetworkConnectionLost,
+                 NSURLErrorNotConnectedToInternet,
+                 NSURLErrorDNSLookupFailed,
+                 NSURLErrorResourceUnavailable,
+                 NSURLErrorBadServerResponse,
+                 NSURLErrorCannotLoadFromNetwork:
+                return true
+            default:
+                return false
+            }
+        }
+        return false
     }
 
     private func check(response: URLResponse, url: URL) throws {

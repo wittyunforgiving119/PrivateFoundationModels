@@ -48,6 +48,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/john-rocky/CoreML-LLM", from: "1.8.0"),
+        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.0.0"),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
     ],
     targets: [
@@ -74,6 +75,7 @@ let package = Package(
             dependencies: [
                 "PrivateFoundationModels",
                 .product(name: "CoreMLLLM", package: "CoreML-LLM"),
+                .product(name: "Tokenizers", package: "swift-transformers"),
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),

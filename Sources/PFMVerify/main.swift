@@ -154,11 +154,11 @@ final class Verifier {
 
     // MARK: 1. Load
 
-    func runLoad() async throws -> CoreMLBackendImpl {
+    func runLoad() async throws -> any LanguageModelBackend {
         banner("1. Load model")
         info("Loading \(cli.modelID) via CoreML-LLM…")
         let start = ContinuousClock.now
-        let backend: CoreMLBackendImpl
+        let backend: any LanguageModelBackend
         do {
             backend = try await CoreMLLanguageModel.load(cli.catalog()) { stage in
                 info(stage)
@@ -171,9 +171,14 @@ final class Verifier {
         let duration = ContinuousClock.now - start
         await counter.pass()
         ok("loaded \(backend.modelIdentifier) in \(ms(duration))")
-        info("context length: \(backend.underlying.contextLength)")
-        info("vision supported: \(backend.underlying.supportsVision)")
-        info("audio supported:  \(backend.underlying.supportsAudio)")
+        // Surface the LFM2 / Gemma 4 capability snapshot when available;
+        // Qwen3Backend doesn't expose the same introspection (different
+        // upstream class), so we just skip those lines for Qwen.
+        if let cb = backend as? CoreMLBackendImpl {
+            info("context length: \(cb.underlying.contextLength)")
+            info("vision supported: \(cb.underlying.supportsVision)")
+            info("audio supported:  \(cb.underlying.supportsAudio)")
+        }
         return backend
     }
 
@@ -310,7 +315,9 @@ final class Verifier {
             let response = try await session.respond(
                 to: prompt,
                 generating: CityFact.self,
-                options: GenerationOptions(temperature: 0.2, maximumResponseTokens: 192)
+                // Reasoning models (Qwen3 family) emit a long <think>...</think>
+                // preamble before the JSON; budget needs to clear both.
+                options: GenerationOptions(temperature: 0.2, maximumResponseTokens: 768)
             )
             let dt = ContinuousClock.now - start
             await counter.pass()

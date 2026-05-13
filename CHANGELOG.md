@@ -6,6 +6,60 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0-beta.1] — 2026-05-13
+
+### Added
+- `Qwen3Backend`: a `LanguageModelBackend` that drives Qwen3.5 0.8B / 2B
+  through CoreML-LLM's `Qwen35MLKVGenerator` ANE path. The Qwen catalog
+  entries that returned `configNotFound` / "model does not exist" in v0.1
+  now load and generate end-to-end (`pfm-verify --model qwen3.5-0.8B` →
+  9/10 PASS; the one remaining miss is model-quality, not framework —
+  Qwen3.5 0.8B occasionally emits a JSON array where a string-typed
+  Generable field is required, and the framework correctly raises
+  `decodingFailure`).
+- `CoreMLLanguageModel.Catalog.tokenizerSourceRepo`: maps a CoreML repo
+  to the upstream HuggingFace repo it borrows its tokenizer from.
+  Used internally so the foreground fetcher pulls `tokenizer.json` +
+  `tokenizer_config.json` from `Qwen/Qwen3.5-0.8B` (etc.) when the
+  mlboydaisuke CoreML repo doesn't include them.
+- `HFFetcher.ensureFiles(_:repo:in:token:onProgress:)`: download a
+  hand-picked list of files from any HF repo. Backs the tokenizer
+  pull-down above.
+- Retry loop on transient `URLSession` errors in `HFFetcher`
+  (`NSURLErrorNetworkConnectionLost`, `NSURLErrorTimedOut`, etc.) with
+  exponential backoff. HF's Xet LFS backend drops multi-GB downloads
+  often enough that this matters in practice.
+- `JSONExtraction.stripThinkBlocks`: removes `<think>...</think>` and
+  `<thinking>...</thinking>` reasoning preambles so the downstream JSON
+  / tool-call extraction sees the model's final answer. Qwen3 family is
+  the immediate motivation; future DeepSeek-R1 / o1-style models would
+  use the same path.
+
+### Changed
+- `CoreMLLanguageModel.load(...)` return type went from
+  `CoreMLBackendImpl` to `any LanguageModelBackend` so the function can
+  return either a `CoreMLBackendImpl` (LFM2.5 / Gemma 4) or a
+  `Qwen3Backend` (Qwen3.5). All real-world call sites pipe the return
+  value into `SystemLanguageModel(backend:)`, which takes
+  `any LanguageModelBackend`, so the change is source-compatible at
+  every documented usage. `pfm-verify` adjusted to cast when it wants
+  CoreML-specific introspection (`underlying.contextLength`).
+- Tool-call parser is now layout-tolerant: accepts
+  `TOOL_CALL: name\n{json}`, `TOOL_CALL: name {json}`, and
+  `TOOL_CALL: {json}` (with single-tool name inference). The tool name
+  is taken as the first whitespace-delimited token before the `{` —
+  previous versions kept all interior whitespace and broke on
+  small-model output like `TOOL_CALL: add\nSINGLE-LINE JSON arguments:`.
+
+### Known limitations
+- `.qwen3VL2BStateful` still doesn't load — vision input on the session
+  API ships in v0.3.
+- Reasoning models (Qwen3 family) need a generous `maximumResponseTokens`
+  budget for `Generable` because the `<think>` preamble eats into the
+  budget. v0.2 doesn't expose a "thinking off" toggle; `pfm-verify`
+  bumps the Generable budget to 768 tokens for the qwen3.5 case as a
+  workaround.
+
 ## [0.1.1] — 2026-05-13
 
 ### Added

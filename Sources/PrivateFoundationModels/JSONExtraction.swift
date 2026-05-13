@@ -14,10 +14,29 @@ public enum JSONExtraction {
 
     /// Best-effort extraction of a single complete top-level JSON object
     /// from `text`. Returns `nil` if no balanced `{ ... }` is present.
-    /// Strips Markdown code-fence wrappers as a first pass.
+    /// Strips Markdown code-fence wrappers AND `<think>...</think>`
+    /// reasoning blocks (Qwen3 / DeepSeek-R1 style "thinking" models)
+    /// as preprocessing passes.
     public static func extractObject(_ text: String) -> String? {
-        let unfenced = stripCodeFence(text)
+        let dethought = stripThinkBlocks(text)
+        let unfenced = stripCodeFence(dethought)
         return firstBalancedObject(in: unfenced)
+    }
+
+    /// Strip `<think>...</think>` (and `<thinking>...</thinking>`) blocks
+    /// emitted by reasoning models. The thinking content is the model's
+    /// scratchpad; we want the final answer that follows.
+    public static func stripThinkBlocks(_ text: String) -> String {
+        var s = text
+        for tag in ["think", "thinking"] {
+            let open = "<\(tag)>"
+            let close = "</\(tag)>"
+            while let openRange = s.range(of: open),
+                  let closeRange = s.range(of: close, range: openRange.upperBound..<s.endIndex) {
+                s.removeSubrange(openRange.lowerBound..<closeRange.upperBound)
+            }
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Strip a leading ``` or ```language fence and the trailing ``` fence

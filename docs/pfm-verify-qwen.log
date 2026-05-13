@@ -1,0 +1,114 @@
+
+──────────────────────────────────────────────────────────────────────────────
+ PrivateFoundationModels verification
+──────────────────────────────────────────────────────────────────────────────
+  Model:           qwen3.5-0.8B
+  Date:            2026-05-13 02:27:52 +0000
+  Working dir:     /Users/majimadaisuke/Downloads/PrivateFoundationModels
+
+──────────────────────────────────────────────────────────────────────────────
+ 1. Load model
+──────────────────────────────────────────────────────────────────────────────
+  • Loading qwen3.5-0.8B via CoreML-LLM…
+  • Fetching mlboydaisuke/qwen3.5-0.8B-CoreML → /Users/majimadaisuke/Library/Application Support/PrivateFoundationModels/qwen3.5-0.8B-CoreML
+  • [1/33] .gitattributes (1.5 KB) — cached
+  • [2/33] README.md (5.8 KB) — cached
+  • [3/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_a.mlpackage/Data/com.apple.CoreML/model.mlmodel (200.5 KB) — cached
+  • [4/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_a.mlpackage/Data/com.apple.CoreML/weights/weight.bin (120.3 MB) — cached
+  • [5/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_a.mlpackage/Manifest.json (617 B) — cached
+  • [6/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_b.mlpackage/Data/com.apple.CoreML/model.mlmodel (208.2 KB) — cached
+  • [7/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_b.mlpackage/Data/com.apple.CoreML/weights/weight.bin (117.3 MB) — cached
+  • [8/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_b.mlpackage/Manifest.json (617 B) — cached
+  • [9/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_c.mlpackage/Data/com.apple.CoreML/model.mlmodel (200.6 KB) — cached
+  • [10/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_c.mlpackage/Data/com.apple.CoreML/weights/weight.bin (120.3 MB) — cached
+  • [11/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_c.mlpackage/Manifest.json (617 B) — cached
+  • [12/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_d.mlpackage/Data/com.apple.CoreML/model.mlmodel (211.9 KB) — cached
+  • [13/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_d.mlpackage/Data/com.apple.CoreML/weights/weight.bin (359.8 MB) — cached
+  • [14/33] qwen3_5_0_8b_decode_chunks_mlkv/chunk_d.mlpackage/Manifest.json (617 B) — cached
+  • [15/33] qwen3_5_0_8b_decode_chunks_mlkv/embed_weight.bin (485.0 MB) — cached
+  • [16/33] qwen3_5_0_8b_decode_fp16_mseq128.mlpackage/Data/com.apple.CoreML/model.mlmodel (587.2 KB) — cached
+  • [17/33] qwen3_5_0_8b_decode_fp16_mseq128.mlpackage/Data/com.apple.CoreML/weights/weight.bin (1.4 GB) — cached
+  • [18/33] qwen3_5_0_8b_decode_fp16_mseq128.mlpackage/Manifest.json (617 B) — cached
+  • [19/33] qwen3_5_0_8b_decode_int8_mseq128.mlpackage/Data/com.apple.CoreML/model.mlmodel (616.6 KB) — cached
+  • [20/33] qwen3_5_0_8b_decode_int8_mseq128.mlpackage/Data/com.apple.CoreML/weights/weight.bin (718.2 MB) — cached
+  • [21/33] qwen3_5_0_8b_decode_int8_mseq128.mlpackage/Manifest.json (617 B) — cached
+  • [22/33] qwen3_5_0_8b_fp16_seq64.mlpackage/Data/com.apple.CoreML/model.mlmodel (1.9 MB) — cached
+  • [23/33] qwen3_5_0_8b_fp16_seq64.mlpackage/Data/com.apple.CoreML/weights/weight.bin (1.4 GB) — cached
+  • [24/33] qwen3_5_0_8b_fp16_seq64.mlpackage/Manifest.json (617 B) — cached
+  • [25/33] qwen3_5_0_8b_prefill_stateful_fp16_seq64.mlpackage/Data/com.apple.CoreML/model.mlmodel (1.9 MB) — cached
+  • [26/33] qwen3_5_0_8b_prefill_stateful_fp16_seq64.mlpackage/Data/com.apple.CoreML/weights/weight.bin (1.4 GB) — cached
+  • [27/33] qwen3_5_0_8b_prefill_stateful_fp16_seq64.mlpackage/Manifest.json (617 B) — cached
+  • [28/33] qwen3_5_chunk_a.mlpackage/Data/com.apple.CoreML/model.mlmodel (1.0 MB) — cached
+  • [29/33] qwen3_5_chunk_a.mlpackage/Data/com.apple.CoreML/weights/weight.bin (961.1 MB) — cached
+  • [30/33] qwen3_5_chunk_a.mlpackage/Manifest.json (617 B) — cached
+  • [31/33] qwen3_5_chunk_b.mlpackage/Data/com.apple.CoreML/model.mlmodel (1.0 MB) — cached
+  • [32/33] qwen3_5_chunk_b.mlpackage/Data/com.apple.CoreML/weights/weight.bin (961.6 MB) — cached
+  • [33/33] qwen3_5_chunk_b.mlpackage/Manifest.json (617 B) — cached
+  • Fetching tokenizer from Qwen/Qwen3.5-0.8B → hf_model/
+  • [1/2] tokenizer.json — cached
+  • [2/2] tokenizer_config.json — cached
+  • Loading Qwen3.5 generator (ANE prewarm ~200 ms)…
+  • Loading tokenizer…
+  ✓ loaded coreml://mlboydaisuke/qwen3.5-0.8B-CoreML in 14198 ms
+  ✓ SystemLanguageModel.default is available
+
+──────────────────────────────────────────────────────────────────────────────
+ 2. respond(to:) — non-streaming
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Name a primary color.
+  ✓ response (683 ms): "Red is a primary color."
+  • prompt: Say hello in Japanese.
+  ✓ response (1986 ms): "<think>
+Thinking Process:
+
+1.  **Analyze the Request:** The user wants me to say "Hello" in Japanese, but the previous prompt asked for a primary color name (which I answered with "Red is a primary co…"
+  ✓ transcript contains instructions + 2 prompts + 2 responses (5 entries)
+
+──────────────────────────────────────────────────────────────────────────────
+ 3. streamResponse(to:) — cumulative snapshots
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Why is the sky blue? Two sentences.
+  ✓ 97 snapshots, cumulative-prefix invariant holds
+  ✓ collect() == last snapshot ✓
+  ✓ final (2348 ms): "<think>
+Thinking Process:
+
+1.  **Analyze the Request:**
+    *   Topic: Why is the sky blue? (Scientific explanation).
+    *   Constraint 1: Very short replies. Two sentences maximum per response.
+    …"
+
+──────────────────────────────────────────────────────────────────────────────
+ 4. respond(to:generating:) — structured output
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: Pick a famous city and describe it briefly.
+  • schema: object with required ["city", "country", "famousFor"]
+  ✗ decodingFailure — model emitted unparseable JSON:
+    raw output prefix: {
+  "city": "New York",
+  "country": "United States",
+  "famousFor": ["The Statue of Liberty", ]
+}
+
+──────────────────────────────────────────────────────────────────────────────
+ 5. Tool calling
+──────────────────────────────────────────────────────────────────────────────
+  • prompt: What is 17 plus 25? Use the add tool.
+  ✓ final (6880 ms): "42"
+  ✓ transcript shows toolCall + toolOutput: [PrivateFoundationModels.Transcript.Entry.Kind.instructions, PrivateFoundationModels.Transcript.Entry.Kind.prompt, PrivateFoundationModels.Transcript.Entry.Kind.toolCall, PrivateFoundationModels.Transcript.Entry.Kind.toolOutput, PrivateFoundationModels.Transcript.Entry.Kind.response]
+  • tool output value: 42
+
+──────────────────────────────────────────────────────────────────────────────
+ 6. Transcript serialization round-trip
+──────────────────────────────────────────────────────────────────────────────
+  • serialized: 322 bytes
+  ✓ round-trip preserved kinds + content (3 entries)
+
+──────────────────────────────────────────────────────────────────────────────
+ Summary
+──────────────────────────────────────────────────────────────────────────────
+  passed: 9
+  failed: 1
+
+  ⚠ 1 scenario(s) failed.
+

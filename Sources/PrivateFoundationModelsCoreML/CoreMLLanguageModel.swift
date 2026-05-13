@@ -2,6 +2,7 @@ import CoreML
 import CoreMLLLM
 import Foundation
 import PrivateFoundationModels
+import Tokenizers
 
 /// Factory + `LanguageModelBackend` adapter that runs PrivateFoundationModels
 /// on top of [CoreML-LLM](https://github.com/john-rocky/CoreML-LLM), which
@@ -62,6 +63,19 @@ public enum CoreMLLanguageModel {
             case .custom(let r):     return r
             }
         }
+
+        /// HuggingFace repo to pull tokenizer files from when the CoreML
+        /// repo doesn't ship them. Returns `nil` for catalogs whose CoreML
+        /// repo already embeds the tokenizer.
+        var tokenizerSourceRepo: String? {
+            switch self {
+            case .qwen3_5_0_8B:      return "Qwen/Qwen3.5-0.8B"
+            case .qwen3_5_2B:        return "Qwen/Qwen3.5-2B"
+            case .qwen3VL2BStateful: return "Qwen/Qwen3-VL-2B-Instruct"
+            case .lfm2_5_350M, .gemma4E2B, .gemma4E4B, .custom:
+                return nil
+            }
+        }
     }
 
     /// Load (downloading on first call) a CoreML LLM bundle and wrap it as a
@@ -76,24 +90,97 @@ public enum CoreMLLanguageModel {
     ///
     /// `cacheDirectory` overrides the cache root. `hfToken` is forwarded to
     /// HuggingFace for gated repos.
+    ///
+    /// Routing: LFM2.5 and Gemma 4 go through `CoreMLLLM.load(from:)`. The
+    /// Qwen3.5 family (`.qwen3_5_0_8B`, `.qwen3_5_2B`) is served by
+    /// `Qwen3Backend`, which wraps `Qwen35MLKVGenerator` and a tokenizer
+    /// pulled from the source HuggingFace repo (the mlboydaisuke CoreML
+    /// repos don't ship tokenizer files).
     public static func load(
         _ model: Catalog,
         computeUnits: MLComputeUnits = .cpuAndNeuralEngine,
         cacheDirectory: URL? = nil,
         hfToken: String? = nil,
         onProgress: (@Sendable (String) -> Void)? = nil
-    ) async throws -> CoreMLBackendImpl {
+    ) async throws -> any LanguageModelBackend {
         let modelDir = try resolveCacheDirectory(for: model, override: cacheDirectory)
         onProgress?("Fetching \(model.repo) → \(modelDir.path)")
         try await HFFetcher().ensure(repo: model.repo, in: modelDir, token: hfToken) { event in
             onProgress?(event.description)
         }
 
-        onProgress?("Loading model…")
-        let llm = try await CoreMLLLM.load(from: modelDir,
-                                            computeUnits: computeUnits,
-                                            onProgress: { stage in onProgress?(stage) })
-        return CoreMLBackendImpl(llm: llm, modelIdentifier: "coreml://\(model.repo)")
+        switch model {
+        case .qwen3_5_0_8B, .qwen3_5_2B:
+            return try await loadQwen3(model, modelDir: modelDir, computeUnits: computeUnits,
+                                       hfToken: hfToken, onProgress: onProgress)
+        case .qwen3VL2BStateful:
+            throw LoadError.unsupportedCatalogV02(
+                "Qwen3-VL needs vision input on `LanguageModelSession`, which lands in v0.3. "
+                + "Use `.lfm2_5_350M` / `.gemma4E2B` / `.qwen3_5_0_8B` for v0.2.")
+        case .lfm2_5_350M, .gemma4E2B, .gemma4E4B, .custom:
+            onProgress?("Loading model…")
+            let llm = try await CoreMLLLM.load(from: modelDir,
+                                                computeUnits: computeUnits,
+                                                onProgress: { stage in onProgress?(stage) })
+            return CoreMLBackendImpl(llm: llm, modelIdentifier: "coreml://\(model.repo)")
+        }
+    }
+
+    private static func loadQwen3(
+        _ model: Catalog,
+        modelDir: URL,
+        computeUnits: MLComputeUnits,
+        hfToken: String?,
+        onProgress: (@Sendable (String) -> Void)?
+    ) async throws -> Qwen3Backend {
+        guard let tokenizerSource = model.tokenizerSourceRepo else {
+            throw LoadError.missingTokenizerSource(model.repo)
+        }
+        let tokenizerDir = modelDir.appendingPathComponent("hf_model")
+        onProgress?("Fetching tokenizer from \(tokenizerSource) → \(tokenizerDir.lastPathComponent)/")
+        try await HFFetcher().ensureFiles(
+            ["tokenizer.json", "tokenizer_config.json"],
+            repo: tokenizerSource,
+            in: tokenizerDir,
+            token: hfToken,
+            onProgress: { event in onProgress?(event.description) }
+        )
+
+        onProgress?("Loading Qwen3.5 generator (ANE prewarm ~200 ms)…")
+        let cfg: Qwen35MLKVGenerator.Config
+        switch model {
+        case .qwen3_5_0_8B: cfg = .default0_8B
+        case .qwen3_5_2B:   cfg = .default2B
+        default:
+            throw LoadError.unsupportedCatalogV02("internal: unexpected Qwen route for \(model.repo)")
+        }
+        let generator = Qwen35MLKVGenerator(cfg: cfg)
+        generator.setModelFolder(modelDir)
+        generator.setComputeUnits(computeUnits)
+        try await generator.load()
+
+        onProgress?("Loading tokenizer…")
+        let tokenizer = try await AutoTokenizer.from(modelFolder: tokenizerDir)
+
+        return Qwen3Backend(
+            generator: generator,
+            tokenizer: tokenizer,
+            modelIdentifier: "coreml://\(model.repo)"
+        )
+    }
+
+    public enum LoadError: Error, LocalizedError {
+        case unsupportedCatalogV02(String)
+        case missingTokenizerSource(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .unsupportedCatalogV02(let m): return m
+            case .missingTokenizerSource(let repo):
+                return "No tokenizer source repo configured for \(repo). " +
+                    "Add an entry to `Catalog.tokenizerSourceRepo`."
+            }
+        }
     }
 
     /// Return the directory this catalog entry should live in. Defaults to
@@ -338,38 +425,56 @@ public final class CoreMLBackendImpl: LanguageModelBackend, @unchecked Sendable 
         tools: [AnyTool],
         schema: GenerationSchema?
     ) -> BackendGeneration {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Reasoning models (Qwen3, DeepSeek-R1, etc.) prefix output with
+        // <think>...</think>. Strip first so downstream parsing sees the
+        // actual answer.
+        let dethought = JSONExtraction.stripThinkBlocks(raw)
+        let trimmed = dethought.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Tool call detection
         if !tools.isEmpty, let range = trimmed.range(of: toolCallMarker) {
             let after = String(trimmed[range.upperBound...])
-            let lines = after.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
-            guard let firstLine = lines.first else {
-                return BackendGeneration(text: trimmed)
+                .trimmingCharacters(in: .whitespaces)
+
+            // Two layouts:
+            //   1.  TOOL_CALL: <name>\n<json>      (canonical)
+            //   2.  TOOL_CALL: <name> <json>       (same-line)
+            //   3.  TOOL_CALL: <json>              (small model omits name)
+            // Find the `{` that opens the JSON object; everything before
+            // it is the tool name, everything from it on is the payload.
+            if let braceIndex = after.firstIndex(of: "{") {
+                // The tool name is the first whitespace-delimited token
+                // before the `{`. Models often run the JSON onto a line
+                // separated from the marker by extra prose ("TOOL_CALL:
+                // add\nSINGLE-LINE JSON arguments:\n{...}"), so taking the
+                // entire interior region would yield garbage tool names.
+                let namePart = String(after[..<braceIndex])
+                    .components(separatedBy: .whitespacesAndNewlines)
+                    .first(where: { !$0.isEmpty }) ?? ""
+                let jsonPart = String(after[braceIndex...])
+                let cleaned = extractJSONObject(jsonPart) ?? stripCodeFence(jsonPart)
+                let trimmedCleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmedCleaned.hasPrefix("{") {
+                    let resolvedName: String
+                    if !namePart.isEmpty {
+                        resolvedName = namePart
+                    } else if tools.count == 1 {
+                        // Model omitted the name; only one tool is registered,
+                        // so the call is unambiguous.
+                        resolvedName = tools[0].name
+                    } else {
+                        // Ambiguous: model emitted JSON only but several tools
+                        // are registered. Fall back to treating the output as
+                        // text rather than guessing wrong.
+                        return BackendGeneration(text: trimmed)
+                    }
+                    return BackendGeneration(text: nil, toolCalls: [
+                        .init(name: resolvedName, argumentsJSON: trimmedCleaned)
+                    ])
+                }
             }
-            let toolName = firstLine.trimmingCharacters(in: .whitespaces)
-            let rest: String
-            if lines.count > 1 {
-                rest = String(lines[1]).trimmingCharacters(in: .whitespacesAndNewlines)
-            } else {
-                rest = ""
-            }
-            // Try to extract a JSON object from `rest`. Small models often
-            // surround the JSON with prose ("here are the args: { ... }
-            // please call ..."), so look for the outermost balanced
-            // `{ ... }` instead of trusting the model to put bare JSON on
-            // the line.
-            let cleaned = extractJSONObject(rest) ?? stripCodeFence(rest)
-            // If after cleaning we still don't have a leading `{`, the
-            // model didn't actually emit a tool call — treat the whole
-            // output as text and let the session decide what to do.
-            let trimmedCleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmedCleaned.hasPrefix("{") else {
-                return BackendGeneration(text: trimmed)
-            }
-            return BackendGeneration(text: nil, toolCalls: [
-                .init(name: toolName, argumentsJSON: trimmedCleaned)
-            ])
+            // Marker present but no JSON object — treat as text.
+            return BackendGeneration(text: trimmed)
         }
 
         // Schema-constrained: extract a single JSON object the model emitted.
