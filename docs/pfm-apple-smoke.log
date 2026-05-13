@@ -1,0 +1,36 @@
+[0/1] Planning build
+Building for production...
+[0/5] Write sources
+[2/6] Write swift-version--58304C5D6DBC2206.txt
+[4/6] Compiling PrivateFoundationModelsApple AppleFoundationModelBackend.swift
+[5/7] Compiling PFMAppleSmoke main.swift
+[5/7] Write Objects.LinkFileList
+[6/7] Linking pfm-apple-smoke
+Build of product 'pfm-apple-smoke' complete! (2.67s)
+
+──────────────────────────────────────────────────────────────────────────────
+ PrivateFoundationModelsApple — Apple FM passthrough smoke test
+──────────────────────────────────────────────────────────────────────────────
+  • availability: available
+
+──────────────────────────────────────────────────────────────────────────────
+ 1. respond(to:)
+──────────────────────────────────────────────────────────────────────────────
+  ✓ respond() returned in 1209 ms
+
+--- response ---
+The capital of France is Paris.
+----------------
+
+──────────────────────────────────────────────────────────────────────────────
+ 2. streamResponse(to:)
+──────────────────────────────────────────────────────────────────────────────
+
+--- streaming ---
+The capital of France is Paris.
+-----------------
+  ✓ stream completed
+
+──────────────────────────────────────────────────────────────────────────────
+ All smoke checks passed against Apple's native FoundationModels.
+──────────────────────────────────────────────────────────────────────────────

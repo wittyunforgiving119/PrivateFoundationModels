@@ -1,6 +1,6 @@
 # PrivateFoundationModels
 
-**Apple's [Foundation Models framework](https://developer.apple.com/documentation/foundationmodels) — without the iOS 26 requirement, and with any on-device model you choose.**
+**One call site. Three backends. On iOS 26 it runs Apple's native FoundationModels; on iOS 18 it runs your CoreML or MLX model.**
 
 <p align="center">
   <img src="docs/media/pfm.gif" alt="PFMSwitcher demo: same LanguageModelSession code switching between Apple FoundationModels and LFM2.5-350M on the Neural Engine" width="320">
@@ -8,31 +8,46 @@
 
 ```swift
 import PrivateFoundationModels
-import PrivateFoundationModelsCoreML
+import PrivateFoundationModelsApple   // ← iOS 26+: Apple's native on-device model
+import PrivateFoundationModelsCoreML  // ← iOS 18+: CoreML / Apple Neural Engine
+import PrivateFoundationModelsMLX     // ← iOS 17+: mlx-community/* / Apple GPU
 
-SystemLanguageModel.default = SystemLanguageModel(
-    backend: try await CoreMLLanguageModel.load(.lfm2_5_350M)
-)
+if #available(iOS 26.0, macOS 26.0, *), AppleFoundationModel.isAvailable {
+    SystemLanguageModel.default = SystemLanguageModel(
+        backend: AppleFoundationModel.load()           // Apple's real model
+    )
+} else {
+    SystemLanguageModel.default = SystemLanguageModel(
+        backend: try await CoreMLLanguageModel.load(.lfm2_5_350M)  // your fallback
+    )
+}
 
-let session = LanguageModelSession(
-    instructions: "You are a Swift documentation assistant."
-)
-
-let reply = try await session.respond(to: "What is `async let`?")
+let session = LanguageModelSession(instructions: "Be brief.")
+let reply = try await session.respond(to: "Capital of France?")
 print(reply.content)
 ```
 
-That's the same `LanguageModelSession.respond(to:)` shape Apple ships in iOS 26 — running on iOS 18, on LFM2.5-350M, on the Neural Engine, fully on-device.
+That `session.respond(to:)` is byte-for-byte the Apple FoundationModels call site. **On macOS 26 it returns "The capital of France is Paris." in 1.2 s through Apple's actual native LLM** (verified — see [`docs/pfm-apple-smoke.log`](docs/pfm-apple-smoke.log)). On iOS 18 the same call runs through CoreML (LFM2.5 / Gemma 4 / Qwen3.5 on the ANE) or MLX (any `mlx-community/*` model on the GPU). The application code never changes.
 
-**Verified on Mac, not aspirational** — three harnesses run green against a real on-device model on the Apple Neural Engine:
+**Three runtimes — same `LanguageModelSession` surface, picked at install time**
 
-- [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — every public API path (10/10)
+| Backend | Product | Runtime | iOS / macOS | Model |
+|---|---|---|---|---|
+| Apple FoundationModels | `PrivateFoundationModelsApple` | Apple Intelligence native | **iOS 26 / macOS 26 / visionOS 26** | Apple's 3 B on-device LLM (locked) |
+| CoreML | `PrivateFoundationModelsCoreML` | Apple Neural Engine | iOS 18 / macOS 15 / visionOS 2 | Gemma 4 / Qwen3.5 / Qwen3-VL / LFM2.5 / FunctionGemma / EmbeddingGemma |
+| MLX | `PrivateFoundationModelsMLX` | Apple GPU (Metal) | iOS 17 / macOS 14 / visionOS 1 | any `mlx-community/*` repo — Llama, Qwen, Gemma, Mistral, Phi, VLMs |
+
+**Verified on Mac, not aspirational** — five harnesses run green against real on-device models:
+
+- [`docs/pfm-apple-smoke.log`](docs/pfm-apple-smoke.log) — Apple's native FoundationModels through PFM's API (load 0 s, respond 1.2 s, stream ✓)
+- [`docs/pfm-verify.log`](docs/pfm-verify.log) — every public API path against CoreML LFM2.5 (10/10)
 - [`docs/PORTABILITY.md`](docs/PORTABILITY.md) — Apple-FM-shaped call sites compile and run unchanged (8/8)
-- [`docs/DEEP_VERIFICATION.md`](docs/DEEP_VERIFICATION.md) — every Generable shape × Tool pattern (44 stub tests + real-model PASS 7 / MODEL 4 / FAIL 0)
+- [`docs/pfm-deep.log`](docs/pfm-deep.log) — Generable × Tool × Multimodal × PromptBuilder against CoreML (**PASS 7 / MODEL 4 / FAIL 0**)
+- [`docs/pfm-mlx-deep.log`](docs/pfm-mlx-deep.log) — same matrix against MLX `mlx-community/Qwen3.5-0.8B-MLX-4bit` (**PASS 9 / MODEL 5 / FAIL 0**)
 
-**Drop-in source compatibility with Apple `FoundationModels`** — the same code that uses Apple's framework on iOS 26 compiles unchanged against `PrivateFoundationModels` on iOS 18. The only diff is the `import` line plus a one-line backend install at app startup. Eight Apple-FM-shaped call sites — single-turn / multi-turn / trailing-closure instructions / streaming / `GenerationOptions` / `Generable` / `Tool` / transcript Codable — run green end-to-end. See [`docs/PORTABILITY.md`](docs/PORTABILITY.md) for the exact diff and the runtime log.
+**Drop-in source compatibility with Apple `FoundationModels`** — the same code that uses Apple's framework on iOS 26 compiles unchanged against `PrivateFoundationModels` on iOS 18. The only diff is the `import` line plus a one-line backend install at app startup.
 
-**First call downloads the model. No prep required.** `CoreMLLanguageModel.load(.lfm2_5_350M)` writes ~810 MB to `~/Library/Application Support/PrivateFoundationModels/lfm2.5-350m-coreml/` over a foreground URLSession and skips files already present on subsequent runs. Works from a CLI, an Xcode Preview, a unit test harness, or an iOS app — none of CoreML-LLM's background-URLSession assumptions apply.
+**First call downloads the CoreML / MLX model. No prep required.** `CoreMLLanguageModel.load(.lfm2_5_350M)` writes ~810 MB to `~/Library/Application Support/PrivateFoundationModels/lfm2.5-350m-coreml/` over a foreground URLSession; MLX uses HuggingFace's standard `~/.cache/huggingface/hub/` cache. The Apple FM backend uses no download — the model is built into the OS.
 
 ---
 
@@ -40,15 +55,15 @@ That's the same `LanguageModelSession.respond(to:)` shape Apple ships in iOS 26 
 
 Apple's `FoundationModels` framework is great. It also has three real constraints:
 
-| | Apple `FoundationModels` | `PrivateFoundationModels` |
+| | Apple `FoundationModels` (native) | `PrivateFoundationModels` |
 |---|---|---|
-| **Minimum OS** | iOS 26 / macOS 26 / visionOS 26 | iOS 18 / macOS 15 / visionOS 2 |
-| **Model** | Apple's 3 B on-device model, locked | Any CoreML / MLX / GGUF bundle |
+| **Minimum OS** | iOS 26 / macOS 26 / visionOS 26 | iOS 18 / macOS 15 / visionOS 2 (CoreML), or iOS 26 (native passthrough) |
+| **Model** | Apple's 3 B on-device model, locked | Any CoreML / MLX / GGUF bundle, *or* Apple's own when available |
 | **Adapter support** | Limited, ~90% context budget burned by adapter | Bring your own LoRA / fine-tune |
 | **Domain coverage** | Apple-recommended only — coding, math, general Q&A all officially discouraged | Whatever your chosen model is good at |
-| **API surface** | `LanguageModelSession` / `Instructions` / `Tool` / `Generable` | Same names, same shapes |
+| **API surface** | `LanguageModelSession` / `Instructions` / `Tool` / `Generable` | Same names, same shapes — and on iOS 26 the same calls reach Apple's native model |
 
-If you've already written code against Apple's framework, point it at `PrivateFoundationModels` and it builds. If you haven't, the migration path the day iOS 26 hits is `s/PrivateFoundationModels/FoundationModels/` and a deployment-target bump.
+PFM is not a competitor to Apple FoundationModels; it's the **iOS 18 polyfill that becomes a runtime passthrough on iOS 26**. The day your deployment target jumps to iOS 26 you can either delete PFM (`s/PrivateFoundationModels/FoundationModels/`) or keep it for the older-OS support, the CoreML / MLX fallback, and the bring-your-own-model story.
 
 ---
 
@@ -70,15 +85,40 @@ targets: [
 ]
 ```
 
-Three products:
+Four products:
 
 - **`PrivateFoundationModels`** — the API surface (`LanguageModelSession`, `Instructions`, …). Zero runtime deps. Import this everywhere.
-- **`PrivateFoundationModelsCoreML`** — the default backend. Depends on [`john-rocky/CoreML-LLM`](https://github.com/john-rocky/CoreML-LLM), which runs Gemma 4 / Qwen3.5 / Qwen3-VL / LFM2.5 / FunctionGemma / EmbeddingGemma on the Apple Neural Engine. Import only in the target that wires `SystemLanguageModel.default`.
-- **`PrivateFoundationModelsMLX`** — the MLX backend. Depends on [`ml-explore/mlx-swift-lm`](https://github.com/ml-explore/mlx-swift-lm), which runs any `mlx-community/*` model — Llama, Qwen, Gemma, Mistral, Phi — on Apple Silicon GPU. Same `LanguageModelSession.respond(...)` API as the CoreML backend; flip one line to switch.
+- **`PrivateFoundationModelsApple`** — passthrough to Apple's native FoundationModels framework on iOS 26+ / macOS 26+. Zero runtime deps beyond the system framework. Text + streaming text in v0.4; `Generable` / `Tool` cross-translation lands in v0.5.
+- **`PrivateFoundationModelsCoreML`** — CoreML / ANE backend. Depends on [`john-rocky/CoreML-LLM`](https://github.com/john-rocky/CoreML-LLM), which runs Gemma 4 / Qwen3.5 / Qwen3-VL / LFM2.5 / FunctionGemma / EmbeddingGemma on the Apple Neural Engine. Import only in the target that wires `SystemLanguageModel.default`.
+- **`PrivateFoundationModelsMLX`** — MLX backend. Depends on [`ml-explore/mlx-swift-lm`](https://github.com/ml-explore/mlx-swift-lm), which runs any `mlx-community/*` model — Llama, Qwen, Gemma, Mistral, Phi — on Apple Silicon GPU. Same `LanguageModelSession.respond(...)` API as the CoreML and Apple backends.
 
-All three are pure SPM. No CocoaPods. No special build phase. No model files in the repo — the backend downloads on first call.
+All four are pure SPM. No CocoaPods. No special build phase. No model files in the repo — CoreML / MLX backends download on first call; the Apple backend uses the OS-bundled model.
 
 You can also wire your own `LanguageModelBackend` (llama.cpp, a remote API, etc.) — see [Bring your own backend](#bring-your-own-backend) below.
+
+### Apple FoundationModels backend (iOS 26+ / macOS 26+ / visionOS 26+)
+
+When your deployment target reaches iOS 26 — or when you ship an app that supports both iOS 18 and iOS 26 — the same call site can route to **Apple's actual on-device model** (the one that powers Apple Intelligence rewriting, summarization, and smart reply) without any code change beyond the install line:
+
+```swift
+import PrivateFoundationModels
+import PrivateFoundationModelsApple
+
+if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *),
+   AppleFoundationModel.isAvailable {
+    SystemLanguageModel.default = SystemLanguageModel(
+        backend: AppleFoundationModel.load()
+    )
+}
+
+let session = LanguageModelSession(instructions: Instructions("Be brief."))
+print(try await session.respond(to: "Capital of France?").content)
+// "The capital of France is Paris."  — from Apple's native model in 1.2 s
+```
+
+`AppleFoundationModel.availability` mirrors Apple's `SystemLanguageModel.default.availability` (`available`, `unavailable(.deviceNotEligible | .appleIntelligenceNotEnabled | .modelNotReady)`) so app code can branch on it without importing FoundationModels directly.
+
+Verified on macOS 26.0 — see [`docs/pfm-apple-smoke.log`](docs/pfm-apple-smoke.log). Plain text + streaming text in v0.4; `@Generable` and `Tool` cross-translation between PFM's protocols and Apple's land in v0.5 (today the backend rejects them with a clear error message so the failure isn't silent).
 
 ### MLX backend (alternative)
 
@@ -335,17 +375,18 @@ If you find a method or initializer in Apple's docs that PFM doesn't ship, pleas
 
 ## Verified
 
-Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1, against `mlboydaisuke/lfm2.5-350m-coreml` (CoreML / ANE) and `mlx-community/Qwen3.5-0.8B-MLX-4bit` (MLX / GPU):
+Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1 / Xcode 26.1, against `mlboydaisuke/lfm2.5-350m-coreml` (CoreML / ANE), `mlx-community/Qwen3.5-0.8B-MLX-4bit` (MLX / GPU), and Apple's own on-device model (Apple Intelligence enabled):
 
 | Harness | What it proves | Result |
 |---|---|---|
 | `swift test` | Session logic, schema decoder, tool dispatch, error wrapping — all stub-backed for determinism | **90 / 90 pass** ([deep tests](docs/DEEP_VERIFICATION.md)) |
-| `swift run -c release pfm-verify` | Every public API path against a real model | **10 / 10 pass** ([log](docs/pfm-verify.log)) |
+| `swift run -c release pfm-verify` | Every public API path against a real CoreML model | **10 / 10 pass** ([log](docs/pfm-verify.log)) |
 | `swift run -c release pfm-portability` | Real Apple-FM-shaped code compiled and ran unchanged | **8 / 8 pass** ([log](docs/pfm-portability.log)) |
 | `swift run -c release pfm-deep` | Every Generable shape × Tool pattern against the real CoreML model | **PASS 7 / MODEL 4 / FAIL 0** ([log](docs/pfm-deep.log)) |
 | `pfm-mlx-deep` (xcodebuild) | Same scenario matrix routed through MLX-Swift on a real `mlx-community/*` model | **PASS 9 / MODEL 5 / FAIL 0** ([log](docs/pfm-mlx-deep.log)) |
+| `swift run -c release pfm-apple-smoke` | `respond(to:)` + `streamResponse(to:)` through PFM hitting **Apple's actual native FoundationModels** | ✓ load 0 s, ✓ respond 1.2 s, ✓ stream ([log](docs/pfm-apple-smoke.log)) |
 
-`MODEL` = API works, content quality limited by the small model used for verification (a larger model lands the test in PASS). `FAIL` = framework / backend regression — zero is the only acceptable number across both backends.
+`MODEL` = API works, content quality limited by the small model used for verification (a larger model lands the test in PASS). `FAIL` = framework / backend regression — zero is the only acceptable number across every backend.
 
 ## Roadmap
 
@@ -353,15 +394,19 @@ Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1, against `mlboydaisuke/lfm2.
 - v0.1.1 — `@Generable` macro + `@Guide(description:)`
 - v0.2 — Qwen3.5 routing + `Prompt` / `@PromptBuilder` /
   `Guardrails` parity + vision input on the session API
-- **v0.3 (current)** — Streaming `Generable` partial-snapshot decode +
-  MLX-Swift backend (`mlx-community/*` models — Llama, Qwen, Gemma,
-  Mistral, Phi)
-- v0.4 — Qwen3-VL routing (`Qwen3VL2BStatefulGenerator`) + WWDC 2026 iOS
-  27 API diff absorption
-- v0.5 — llama.cpp / GGUF backend
-- v0.6 — Grammar-constrained decoding
-- v0.7 — Audio input on the session API + speculative decoding
-- v0.8 — LoRA / adapter hot-swap, benchmark harness, observability
+- v0.3 — Streaming `Generable` partial-snapshot decode +
+  MLX-Swift backend (`mlx-community/*` models, including `*-VL-*` VLMs)
+- **v0.4 (current)** — Apple FoundationModels passthrough backend
+  (`PrivateFoundationModelsApple`): on iOS 26+ / macOS 26+ /
+  visionOS 26+ the same call site routes to Apple's actual native
+  on-device model. Text + streaming text; `Generable` / `Tool`
+  cross-translation queued for v0.5.
+- v0.5 — `@Generable` / `Tool` cross-translation for Apple FM backend +
+  Qwen3-VL routing on CoreML
+- v0.6 — llama.cpp / GGUF backend
+- v0.7 — Grammar-constrained decoding
+- v0.8 — Audio input on the session API + speculative decoding
+- v0.9 — LoRA / adapter hot-swap, benchmark harness, observability
 
 ---
 

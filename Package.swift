@@ -31,6 +31,14 @@ let package = Package(
         // backend.
         .library(name: "PrivateFoundationModelsMLX", targets: ["PrivateFoundationModelsMLX"]),
 
+        // Apple FoundationModels passthrough backend. On iOS 26+ /
+        // macOS 26+ / visionOS 26+, routes the exact same call sites
+        // straight to Apple's native FoundationModels framework, the
+        // one that ships with Apple Intelligence. Text + streaming
+        // only in v0.4 — Generable / Tool cross-translation lands in
+        // v0.5.
+        .library(name: "PrivateFoundationModelsApple", targets: ["PrivateFoundationModelsApple"]),
+
         // End-to-end verification harness. Exercises every public API path
         // (respond / streamResponse / Generable / Tools / transcript) against
         // a real on-device model. Run with:
@@ -65,6 +73,14 @@ let package = Package(
         // feature parity.
         //   xcodebuild -scheme pfm-mlx-deep ...
         .executable(name: "pfm-mlx-deep", targets: ["PFMMLXDeep"]),
+
+        // Smoke test for the Apple FoundationModels passthrough
+        // backend. Loads `FoundationModels.SystemLanguageModel.default`
+        // (Apple's native on-device model) and runs respond /
+        // streamResponse through PFM's call sites. Only meaningful on
+        // iOS 26+ / macOS 26+ devices with Apple Intelligence enabled.
+        //   swift run -c release pfm-apple-smoke
+        .executable(name: "pfm-apple-smoke", targets: ["PFMAppleSmoke"]),
     ],
     dependencies: [
         .package(url: "https://github.com/john-rocky/CoreML-LLM", from: "1.8.0"),
@@ -101,6 +117,13 @@ let package = Package(
                 .product(name: "CoreMLLLM", package: "CoreML-LLM"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
             ],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+        .target(
+            name: "PrivateFoundationModelsApple",
+            dependencies: ["PrivateFoundationModels"],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
             ]
@@ -195,6 +218,16 @@ let package = Package(
                 "PFMDeepKit",
                 "PrivateFoundationModels",
                 "PrivateFoundationModelsMLX",
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+        .executableTarget(
+            name: "PFMAppleSmoke",
+            dependencies: [
+                "PrivateFoundationModels",
+                "PrivateFoundationModelsApple",
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
