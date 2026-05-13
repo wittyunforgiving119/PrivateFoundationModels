@@ -9,11 +9,11 @@
 
 <p align="center">
   <a href="docs/RUNTIME_COMPARISON.md">
-    <img src="docs/media/runtime-comparison-m4max.png" alt="Same Qwen3.5-0.8B on M4 Max: MLX/GPU 4-bit is 12× TTFT and 5× throughput vs CoreML/ANE FP16." width="820">
+    <img src="docs/media/runtime-comparison-m4max.png" alt="Same Qwen3.5-0.8B on M4 Max and iPhone Air: MLX/GPU 4-bit beats CoreML/ANE FP16 on both. M4 Max — 12× TTFT, 5× throughput. iPhone Air — 7× TTFT, 2.6× throughput." width="820">
   </a>
 </p>
 
-<p align="center"><em>Same model, same prompt, same call site — different runtime. M4 Max numbers. <a href="docs/RUNTIME_COMPARISON.md">Full table + caveats.</a></em></p>
+<p align="center"><em>Same model, same prompt, same call site — different runtime. Mac and iPhone numbers, verified end-to-end. <a href="docs/RUNTIME_COMPARISON.md">Full table + caveats.</a></em></p>
 
 ## 30-second value prop
 
@@ -106,7 +106,7 @@ End-to-end verified against the official `openai==2.36` SDK including streaming 
 
 ## Benchmarks
 
-Standardized `pfm-bench` harness with median-of-3 + warmup. Apples-to-apples cross-runtime numbers on M4 Max, multi-language coverage across en/es/ko/ja/zh, contributable from any Mac with one command:
+Standardized `pfm-bench` harness with median-of-3 + warmup. Apples-to-apples cross-runtime numbers on M4 Max **and iPhone Air**, multi-language coverage across en/es/ko/ja/zh, contributable from any Mac with one command:
 
 ```bash
 swift run -c release pfm-bench-apple  --csv-append docs/BENCHMARKS.csv
@@ -116,7 +116,7 @@ $(find ~/Library/Developer/Xcode/DerivedData -name pfm-bench-mlx -path '*Release
   --csv-append docs/BENCHMARKS.csv
 ```
 
-[`docs/BENCHMARKS.csv`](docs/BENCHMARKS.csv) grows per-contributor. iPhone numbers can be appended via the [`Examples/PFMiPhoneBench/`](Examples/PFMiPhoneBench/) one-tap iOS app.
+[`docs/BENCHMARKS.csv`](docs/BENCHMARKS.csv) grows per-contributor — both M4 Max and `iPhone18,1` (iPhone Air) baselines are already in there. Add your own iPhone via the [`Examples/PFMiPhoneBench/`](Examples/PFMiPhoneBench/) one-tap iOS app (auto-starts, AirDrop the CSV out, PR the diff).
 
 Deep dives:
 - **[`docs/RUNTIME_COMPARISON.md`](docs/RUNTIME_COMPARISON.md)** — same model, three runtimes

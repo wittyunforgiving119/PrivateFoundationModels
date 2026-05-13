@@ -6,6 +6,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.10.5] — 2026-05-14
+
+### Added
+- **First iPhone bench rows** in `docs/BENCHMARKS.csv` — captured
+  end-to-end on `iPhone18,1` (iPhone Air) / iOS 26.4.2 via the
+  `PFMiPhoneBench` app. Apple FM + CoreML/ANE Qwen3.5-0.8B + MLX/GPU
+  Qwen3.5-0.8B-4bit. The runtime gap holds on iPhone too: MLX 7×
+  faster TTFT (80 ms vs 560 ms), 2.6× higher throughput (385 vs
+  147 chars/sec) for the same weights.
+- `docs/RUNTIME_COMPARISON.md` rewritten with a second-tier
+  iPhone Air table, an explicit "the gap holds on iPhone too"
+  callout, and an updated chart that puts M4 Max and iPhone Air
+  side-by-side.
+
+### Changed
+- README hero alt-text + caption updated — chart now shows both
+  M4 Max and iPhone Air data, so it's no longer "M4 Max numbers"
+  but "Mac and iPhone, verified end-to-end".
+- `Examples/PFMiPhoneBench/PFMiPhoneBench/BenchView.swift` now
+  writes `pfm-bench-latest.csv` after **every** completed backend
+  (not just at the very end of all 4). One backend hanging /
+  crashing no longer loses the rows that already finished.
+
+### Known issues
+- `mlboydaisuke/lfm2.5-350m-coreml` `mlpackage` failed to build on
+  iOS 26.4.2 with `CoreML failed to build model`. Same model
+  loads fine on macOS 26.0. Likely an iOS-side opset / SSM op gap
+  in the CoreML compiler — being tracked.
+
 ## [0.10.4] — 2026-05-13
 
 ### Added
