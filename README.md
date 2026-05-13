@@ -2,6 +2,10 @@
 
 **Apple's [Foundation Models framework](https://developer.apple.com/documentation/foundationmodels) — without the iOS 26 requirement, and with any on-device model you choose.**
 
+<p align="center">
+  <img src="docs/media/pfm.gif" alt="PFMSwitcher demo: same LanguageModelSession code switching between Apple FoundationModels and LFM2.5-350M on the Neural Engine" width="320">
+</p>
+
 ```swift
 import PrivateFoundationModels
 import PrivateFoundationModelsCoreML
