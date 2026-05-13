@@ -399,6 +399,8 @@ If you find a method or initializer in Apple's docs that PFM doesn't ship, pleas
 
 New here? Read the [5-minute walkthrough](docs/TUTORIAL.md). It takes you from `swift package init` to streaming `@Generable` output through Apple's native model.
 
+Already on Apple FM? See [Migrating from `FoundationModels`](docs/MIGRATING_FROM_APPLE_FM.md) — a five-step recipe for bringing your iOS 26 code back to iOS 18 (or shipping both deployment targets from one codebase).
+
 ## FAQ
 
 Common questions in [`docs/FAQ.md`](docs/FAQ.md). Highlights:
