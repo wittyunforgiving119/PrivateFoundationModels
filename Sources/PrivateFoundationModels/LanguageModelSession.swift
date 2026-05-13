@@ -52,6 +52,23 @@ public final class LanguageModelSession: @unchecked Sendable {
         self.init(model: model, instructions: instructions, tools: [])
     }
 
+    /// `Guardrails`-aware initializer that matches Apple's
+    /// `LanguageModelSession(model:guardrails:tools:instructions:)` shape.
+    /// v0.2 doesn't enforce guardrails itself — the parameter is accepted
+    /// for source compatibility and silently ignored. Apple FM's own
+    /// guardrails (via `AppleFMBridgeBackend`) still apply at the backend
+    /// layer.
+    public convenience init(
+        model: SystemLanguageModel = .default,
+        guardrails: Guardrails,
+        tools: [any Tool] = [],
+        instructions: Instructions? = nil
+    ) {
+        _ = guardrails // silenced; see doc comment
+        let erased = tools.map { AnyTool.erased($0) }
+        self.init(model: model, instructions: instructions, tools: erased)
+    }
+
     public convenience init(
         model: SystemLanguageModel = .default,
         transcript: Transcript
@@ -156,6 +173,37 @@ public final class LanguageModelSession: @unchecked Sendable {
                                            options: options, schema: nil)
     }
 
+    /// `Prompt`-builder overload. Matches Apple's
+    /// `respond(options:prompt:)` shape so trailing-closure call sites
+    /// compile against either framework.
+    ///
+    /// ```swift
+    /// let r = try await session.respond {
+    ///     "Translate the following:"
+    ///     userInput
+    /// }
+    /// ```
+    @discardableResult
+    public func respond(
+        options: GenerationOptions = GenerationOptions(),
+        @PromptBuilder prompt build: () -> Prompt
+    ) async throws -> Response<String> {
+        try await respond(to: build().text, options: options)
+    }
+
+    /// `Prompt`-builder overload for `Generable` outputs.
+    @discardableResult
+    public func respond<T: Generable>(
+        generating type: T.Type = T.self,
+        includeSchemaInPrompt: Bool = true,
+        options: GenerationOptions = GenerationOptions(),
+        @PromptBuilder prompt build: () -> Prompt
+    ) async throws -> Response<T> {
+        try await respond(to: build().text, generating: type,
+                           includeSchemaInPrompt: includeSchemaInPrompt,
+                           options: options)
+    }
+
     // MARK: - respond (Generable)
 
     /// Single-shot response constrained to a `Generable` type. The backend
@@ -210,6 +258,26 @@ public final class LanguageModelSession: @unchecked Sendable {
         let attachments = image.map { [BackendAttachment(image: $0)] } ?? []
         return runStreamString(prompt: prompt, attachments: attachments,
                                 options: options, schema: nil)
+    }
+
+    /// `Prompt`-builder streaming overload.
+    public func streamResponse(
+        options: GenerationOptions = GenerationOptions(),
+        @PromptBuilder prompt build: () -> Prompt
+    ) -> ResponseStream<String> {
+        streamResponse(to: build().text, options: options)
+    }
+
+    /// `Prompt`-builder streaming overload for `Generable` outputs.
+    public func streamResponse<T: Generable>(
+        generating type: T.Type = T.self,
+        includeSchemaInPrompt: Bool = true,
+        options: GenerationOptions = GenerationOptions(),
+        @PromptBuilder prompt build: () -> Prompt
+    ) -> ResponseStream<T> {
+        streamResponse(to: build().text, generating: type,
+                       includeSchemaInPrompt: includeSchemaInPrompt,
+                       options: options)
     }
 
     // MARK: - streamResponse (Generable)

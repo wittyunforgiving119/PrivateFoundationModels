@@ -1,6 +1,11 @@
+import CoreGraphics
+import PhotosUI
 import PrivateFoundationModels
 import PrivateFoundationModelsCoreML
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ChatView: View {
     @ObservedObject var manager: ModelManager
@@ -9,6 +14,13 @@ struct ChatView: View {
     @State private var streamingText: String = ""
     @State private var entries: [Transcript.Entry] = []
     @State private var inFlight = false
+
+    /// Attached image for the next message. Cleared after send. Only the
+    /// active backend's vision-capable branch (Gemma 4 E2B multimodal)
+    /// actually consumes the image — text-only backends silently drop it.
+    @State private var attachedImage: CGImage?
+    @State private var attachedPickerItem: PhotosPickerItem?
+    @State private var attachedPreviewData: Data?
 
     var body: some View {
         NavigationStack {
@@ -140,37 +152,108 @@ struct ChatView: View {
     }
 
     private var inputBar: some View {
-        HStack(spacing: 8) {
-            TextField("Message", text: $input, axis: .vertical)
-                .lineLimit(1...4)
-                .textFieldStyle(.roundedBorder)
-                .disabled(manager.session == nil || inFlight)
-            Button {
-                Task { await send() }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
+        VStack(spacing: 6) {
+            if let preview = attachedPreviewData {
+                attachmentPreview(data: preview)
             }
-            .disabled(manager.session == nil || inFlight ||
-                       input.trimmingCharacters(in: .whitespaces).isEmpty)
+            HStack(spacing: 8) {
+                PhotosPicker(selection: $attachedPickerItem, matching: .images) {
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.title3)
+                }
+                .disabled(manager.session == nil || inFlight)
+                .onChange(of: attachedPickerItem) { _, newItem in
+                    Task { await loadPickedImage(from: newItem) }
+                }
+
+                TextField("Message", text: $input, axis: .vertical)
+                    .lineLimit(1...4)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(manager.session == nil || inFlight)
+
+                Button {
+                    Task { await send() }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                }
+                .disabled(manager.session == nil || inFlight ||
+                           input.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
         }
         .padding(10)
+    }
+
+    @ViewBuilder
+    private func attachmentPreview(data: Data) -> some View {
+        #if canImport(UIKit)
+        if let image = UIImage(data: data) {
+            HStack(spacing: 6) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(.rect(cornerRadius: 6))
+                Text("Image attached").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    attachedImage = nil
+                    attachedPickerItem = nil
+                    attachedPreviewData = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 8)
+        }
+        #else
+        EmptyView()
+        #endif
+    }
+
+    private func loadPickedImage(from item: PhotosPickerItem?) async {
+        guard let item else { return }
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            return
+        }
+        attachedPreviewData = data
+        #if canImport(UIKit)
+        if let uiImage = UIImage(data: data), let cgImage = uiImage.cgImage {
+            attachedImage = cgImage
+        }
+        #endif
     }
 
     private func send() async {
         guard let session = manager.session else { return }
         let prompt = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
+        let imageForCall = attachedImage
         input = ""
+        attachedImage = nil
+        attachedPickerItem = nil
+        attachedPreviewData = nil
         inFlight = true
         defer { inFlight = false }
 
-        entries.append(.init(kind: .prompt, content: prompt))
+        let promptDisplay = imageForCall == nil ? prompt : prompt + " 📎"
+        entries.append(.init(kind: .prompt, content: promptDisplay))
         streamingText = ""
-        let stream = session.streamResponse(
-            to: prompt,
-            options: GenerationOptions(temperature: 0.7, maximumResponseTokens: 256)
-        )
+
+        let stream: ResponseStream<String>
+        if let imageForCall {
+            stream = session.streamResponse(
+                to: prompt,
+                image: imageForCall,
+                options: GenerationOptions(temperature: 0.7, maximumResponseTokens: 256)
+            )
+        } else {
+            stream = session.streamResponse(
+                to: prompt,
+                options: GenerationOptions(temperature: 0.7, maximumResponseTokens: 256)
+            )
+        }
+
         do {
             for try await snapshot in stream {
                 streamingText = snapshot.content

@@ -9,9 +9,29 @@
 // pure compile-time portability check). Even with `--no-runtime` the
 // AppleFMCode.swift file must build successfully — that's the real proof.
 
+import CoreGraphics
 import Foundation
 import PrivateFoundationModels
 import PrivateFoundationModelsCoreML
+
+/// Tiny solid-color CGImage used to exercise the vision input path
+/// without needing a real photo on disk. Text-only backends (LFM2.5)
+/// drop the attachment and still produce a sensible text reply.
+func makeSolidImage(width: Int = 32, height: Int = 32) -> CGImage {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let context = CGContext(
+        data: nil,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: width * 4,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    context.setFillColor(CGColor(red: 0.6, green: 0.2, blue: 0.2, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    return context.makeImage()!
+}
 
 @main
 struct PortabilityMain {
@@ -78,6 +98,12 @@ struct PortabilityMain {
         }
         await record("8. warmupAndCheck (prewarm + sync property access)") {
             _ = warmupAndCheck()
+        }
+        await record("9. describeImage (vision input — CGImage routed to multimodal backend)") {
+            _ = try await describeImage(makeSolidImage())
+        }
+        await record("10. translateUsingPromptBuilder (PromptBuilder + Guardrails)") {
+            _ = try await translateUsingPromptBuilder("Good morning, world.")
         }
 
         print("\n" + line)

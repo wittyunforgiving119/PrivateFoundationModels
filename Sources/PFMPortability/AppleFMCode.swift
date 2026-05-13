@@ -21,6 +21,7 @@
 // =============================================================================
 
 import PrivateFoundationModels   // <- the only delta from Apple FM
+import CoreGraphics
 import Foundation
 
 // MARK: - 1. Basic single-turn
@@ -147,7 +148,35 @@ public func warmupAndCheck() -> Bool {
     return !session.isResponding            // sync access — matches Apple FM
 }
 
-// MARK: - 9. Concurrent rejection
+// MARK: - 9. Vision input (CGImage forwarded to multimodal backend)
+
+public func describeImage(_ image: CGImage) async throws -> String {
+    let session = LanguageModelSession {
+        "You are an image describer. Reply in one sentence."
+    }
+    let response = try await session.respond(
+        to: "Briefly describe this image.",
+        image: image,
+        options: GenerationOptions(temperature: 0.0, maximumResponseTokens: 96)
+    )
+    return response.content
+}
+
+// MARK: - 10. Prompt builder + Guardrails (Apple-FM-shaped init parameters)
+
+public func translateUsingPromptBuilder(_ userInput: String) async throws -> String {
+    let session = LanguageModelSession(
+        guardrails: .default,
+        instructions: Instructions("You translate English to French.")
+    )
+    let response = try await session.respond {
+        "Translate the following English text into French:"
+        userInput
+    }
+    return response.content
+}
+
+// MARK: - 11. Concurrent rejection
 
 public func cannotInterleave() async throws {
     let session = LanguageModelSession()

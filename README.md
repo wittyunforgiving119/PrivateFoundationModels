@@ -323,13 +323,17 @@ Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1, against `mlboydaisuke/lfm2.
 
 ## Roadmap
 
-- v0.1 — Core API + CoreML backend + foreground HF fetcher (this release)
-- v0.2 — `@Generable` macro for auto-schema derivation
-- v0.3 — Qwen3.5 / Qwen3-VL routing through `Qwen35MLKVGenerator` for the catalog entries that today need v0.2
+- v0.1 — Core API + CoreML backend + foreground HF fetcher
+- v0.1.1 — `@Generable` macro + `@Guide(description:)`
+- **v0.2 (current)** — Qwen3.5 routing + `Prompt` / `@PromptBuilder` /
+  `Guardrails` parity + vision input on the session API
+- v0.3 — Qwen3-VL routing (`Qwen3VL2BStatefulGenerator`) + WWDC 2026 iOS
+  27 API diff absorption
 - v0.4 — MLX-Swift backend
 - v0.5 — llama.cpp / GGUF backend
-- v0.6 — Grammar-constrained decoding for the CoreML backend
-- v0.7 — Vision input on the session API (`respond(to:image:)` for Qwen3-VL / Gemma 4 multimodal)
+- v0.6 — Grammar-constrained decoding
+- v0.7 — Audio input on the session API + speculative decoding
+- v0.8 — LoRA / adapter hot-swap, benchmark harness, observability
 
 ---
 

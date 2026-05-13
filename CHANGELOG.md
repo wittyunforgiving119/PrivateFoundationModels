@@ -6,6 +6,83 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-13
+
+Rolls up beta.1 and beta.2 into the first stable v0.2 release.
+
+### Added (since 0.1.1)
+
+#### API parity
+- `Prompt` value type with `ExpressibleByStringLiteral` + `Codable`.
+- `@PromptBuilder` result builder so `session.respond { "..." }` trailing
+  closures compile against either Apple's framework or this one. Builder
+  joins segments with double newlines, matching Apple's expected output.
+- `LanguageModelSession.respond(options:prompt:)` /
+  `streamResponse(options:prompt:)` overloads (string and `Generable`
+  outputs) for the trailing-closure call style.
+- `Guardrails` value type with `.default`. Apple-shaped
+  `LanguageModelSession(model:guardrails:tools:instructions:)` init now
+  compiles. v0.2 ships an accept-all no-op; v0.3+ will support real
+  policy configuration.
+- Vision input: `respond(to:image:options:)` and
+  `streamResponse(to:image:options:)` take an optional `CGImage`.
+  Plumbed into a new `BackendAttachment` value type passed to backends
+  via overloaded `LanguageModelBackend.generate(transcript:attachments:...)`
+  / `streamGenerate`.
+
+#### Backends
+- `Qwen3Backend`: drives Qwen3.5 0.8B / 2B via CoreML-LLM's
+  `Qwen35MLKVGenerator`. The Qwen catalog entries that returned
+  `configNotFound` in v0.1 now load and generate end-to-end. Tokenizer is
+  pulled from `Qwen/Qwen3.5-{0.8B,2B}` automatically via the new
+  `Catalog.tokenizerSourceRepo` mapping + `HFFetcher.ensureFiles(...)`.
+- `CoreMLBackendImpl` overrides the multimodal entry points and forwards
+  the first `.image(CGImage)` attachment to
+  `CoreMLLLM.generate(messages:image:)` /
+  `.stream(messages:image:)`. Vision-capable bundles (Gemma 4 E2B
+  multimodal) light up; text-only bundles transparently fall back.
+
+#### Quality / DX
+- `HFFetcher` retries transient `URLSession` errors
+  (`NSURLErrorNetworkConnectionLost`, `NSURLErrorTimedOut`, etc.) up to
+  4 times with exponential backoff. Necessary because HF's Xet LFS
+  backend drops multi-GB downloads more often than fresh S3.
+- `JSONExtraction.stripThinkBlocks` removes `<think>...</think>`
+  reasoning preambles before downstream JSON / tool extraction.
+  Required for Qwen3 family; future DeepSeek-R1 etc. land for free.
+- Tool-call parser is layout-tolerant: accepts
+  `TOOL_CALL: name\n{json}`, `TOOL_CALL: name {json}`,
+  `TOOL_CALL: {json}` (single-tool inference).
+- 16 new tests (Prompt + Guardrails + builder overloads + vision
+  plumbing).
+
+#### Examples + tooling
+- `Examples/PFMSwitcher/PFMSwitcher/ChatView.swift` integrates
+  `PhotosPicker`; the picked image flows through
+  `session.streamResponse(to:image:)` on send and is dropped after
+  send.
+- `Examples/PFMPortability/AppleFMCode.swift` adds two more
+  Apple-FM-shaped scenarios: `describeImage` (vision) and
+  `translateUsingPromptBuilder` (PromptBuilder + Guardrails). 10 / 10
+  scenarios green on real model.
+- `Sources/PFMDeep/DeepMain.swift` exercises three new scenarios:
+  `respond(to:image:)`, `streamResponse(to:image:)`,
+  `respond { @PromptBuilder }`. All three PASS on LFM2.5-350M ANE.
+
+### Changed
+- `CoreMLLanguageModel.load(...)` return type widened from
+  `CoreMLBackendImpl` to `any LanguageModelBackend` (necessary to also
+  return `Qwen3Backend`). All documented call sites pipe into
+  `SystemLanguageModel(backend:)` which takes the protocol, so the
+  change is source-compatible at usage.
+
+### Known limitations
+- `.qwen3VL2BStateful` still requires the upstream
+  `Qwen3VL2BStatefulGenerator` and lands in v0.3.
+- Reasoning models (Qwen3 family) need a generous
+  `maximumResponseTokens` budget for `Generable` because the `<think>`
+  preamble consumes the budget; no toggle to disable yet.
+
 ## [0.2.0-beta.2] — 2026-05-13
 
 ### Added

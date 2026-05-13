@@ -9,6 +9,7 @@
 //
 //   swift run -c release pfm-deep [--model lfm2.5-350m]
 
+import CoreGraphics
 import Foundation
 import PrivateFoundationModels
 import PrivateFoundationModelsCoreML
@@ -45,9 +46,26 @@ struct DeepMain {
 
         await report.runGenerableScenarios()
         await report.runToolScenarios()
+        await report.runMultimodalScenarios()
 
         report.summarize()
     }
+}
+
+/// Tiny solid-color CGImage. Vision-capable backends (Gemma 4 E2B
+/// multimodal) try to describe it; text-only backends drop it silently
+/// and reply to the prompt alone.
+func makeSolidImage(width: Int = 64, height: Int = 64) -> CGImage {
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let context = CGContext(
+        data: nil, width: width, height: height,
+        bitsPerComponent: 8, bytesPerRow: width * 4,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    context.setFillColor(CGColor(red: 0.0, green: 0.5, blue: 0.85, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    return context.makeImage()!
 }
 
 // MARK: - Argument parsing
@@ -459,6 +477,90 @@ struct Report {
             tools: [AlwaysFailsTool()],
             prompt: "Use the boom tool with key=foo."
         )
+    }
+
+    // MARK: Multimodal + PromptBuilder
+
+    mutating func runMultimodalScenarios() async {
+        banner("Multimodal + builder scenarios")
+
+        // M1. respond(to:image:) — text-only backends silently drop the
+        //     image and produce a textual reply; vision-capable backends
+        //     describe the image. Either way the call must not throw.
+        info("M1. respond(to:image:) — prompt: Describe what you see.")
+        let session1 = LanguageModelSession {
+            "You describe images briefly."
+        }
+        let start1 = ContinuousClock.now
+        do {
+            let response = try await session1.respond(
+                to: "Describe what you see in one short sentence.",
+                image: makeSolidImage(),
+                options: GenerationOptions(temperature: 0.0, maximumResponseTokens: 96)
+            )
+            let dt = ContinuousClock.now - start1
+            ok("M1. respond(to:image:) → \(quotedShort(response.content)) (\(ms(dt)))")
+            record("M1. respond(to:image:)", "PASS", "\(quotedShort(response.content))")
+        } catch {
+            fail("M1. respond(to:image:) → \(error)")
+            record("M1. respond(to:image:)", "FAIL", "\(error)")
+        }
+
+        // M2. streamResponse(to:image:) — exercise the multimodal stream
+        //     path; cumulative-prefix invariant must hold on the snapshots.
+        info("M2. streamResponse(to:image:)")
+        let session2 = LanguageModelSession {
+            "Describe images briefly."
+        }
+        let start2 = ContinuousClock.now
+        let stream = session2.streamResponse(
+            to: "What's in this image?",
+            image: makeSolidImage(),
+            options: GenerationOptions(temperature: 0.0, maximumResponseTokens: 96)
+        )
+        var snapshotCount = 0
+        var lastSnapshot = ""
+        do {
+            for try await snapshot in stream {
+                snapshotCount += 1
+                lastSnapshot = snapshot.content
+            }
+            let dt = ContinuousClock.now - start2
+            ok("M2. streamResponse(to:image:) → \(snapshotCount) snapshots, final \(quotedShort(lastSnapshot)) (\(ms(dt)))")
+            record("M2. streamResponse(to:image:)", "PASS", "\(snapshotCount) snapshots")
+        } catch {
+            fail("M2. streamResponse(to:image:) → \(error)")
+            record("M2. streamResponse(to:image:)", "FAIL", "\(error)")
+        }
+
+        // M3. PromptBuilder — multi-segment trailing-closure form.
+        info("M3. respond { PromptBuilder }")
+        let session3 = LanguageModelSession {
+            "Translate English to French. Respond with just the translation."
+        }
+        let start3 = ContinuousClock.now
+        do {
+            let response = try await session3.respond(
+                options: GenerationOptions(temperature: 0.0, maximumResponseTokens: 96)
+            ) {
+                "English:"
+                "Good morning."
+            }
+            let dt = ContinuousClock.now - start3
+            ok("M3. PromptBuilder → \(quotedShort(response.content)) (\(ms(dt)))")
+            record("M3. respond { PromptBuilder }", "PASS", "\(quotedShort(response.content))")
+        } catch {
+            fail("M3. PromptBuilder → \(error)")
+            record("M3. respond { PromptBuilder }", "FAIL", "\(error)")
+        }
+    }
+
+    func quotedShort(_ s: String) -> String {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 140 {
+            return "\"\(trimmed.prefix(140))…\""
+        }
+        return "\"\(trimmed)\""
     }
 
     mutating func runTools(
