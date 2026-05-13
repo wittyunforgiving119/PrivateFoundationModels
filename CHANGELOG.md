@@ -6,6 +6,122 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-05-13
+
+### Added
+- `pfm-bench-apple` / `pfm-bench-coreml` / `pfm-bench-mlx` standardized
+  benchmark executables. Same prompt × same `GenerationOptions` × 3
+  timed iterations + 1 warmup per backend. Each emits load_ms,
+  time-to-first-token, total_ms, output_chars, chars/sec, and a
+  drop-in markdown row.
+- New `PFMBenchKit` shared library backing the three executables.
+- `docs/BENCHMARKS.md` updated with M4 Max / macOS 26.0 baseline:
+  Apple FM (3 B native) — TTFT 297 ms / 252.7 chars/sec,
+  CoreML LFM2.5-350M — TTFT 533 ms / 38.6 chars/sec,
+  CoreML Qwen3.5-0.8B — TTFT 530 ms / 155.1 chars/sec,
+  MLX Qwen3.5-0.8B 4-bit — TTFT 42 ms / 821.2 chars/sec.
+
+## [0.5.1] — 2026-05-13
+
+### Added
+- `BackendGeneration.transcriptDelta`: backends can report transcript
+  entries they produced internally so the session appends them to its
+  own audit trail.
+- Apple FM backend snapshots `session.transcript` before/after the call
+  and translates Apple-side `.toolCalls` / `.toolOutput` entries back
+  to PFM `Transcript.Entry` values via the new field.
+- Test `transcriptDeltaIsAppendedBeforeResponse` locks the contract.
+
+### Changed
+- `pfm-apple-deep` matrix: jumped from **PASS 10 / MODEL 4 / FAIL 0**
+  to **PASS 14 / MODEL 0 / FAIL 0** — tool turns are now visible in
+  `session.transcript` on Apple too.
+
+## [0.5.0] — 2026-05-13
+
+### Added
+- `PFMToolAdapter` (runtime bridge): conforms to
+  `FoundationModels.Tool` with `Arguments = GeneratedContent`, routes
+  each `call(arguments:)` back through PFM's `AnyTool.invoke` so the
+  user's `func call(arguments:)` runs against PFM-decoded Generable
+  arguments exactly as on the CoreML / MLX backends.
+- Apple FM backend now constructs `[PFMToolAdapter]` from incoming
+  PFM tools and passes them to `LanguageModelSession(model:tools:transcript:)`.
+- Apple's `LanguageModelSession.ToolCallError` is unwrapped to the
+  underlying error so PFM callers see exactly what their tool threw.
+
+### Changed
+- Removed the `guardUnsupported(tools:)` guard. Tools work now.
+- `pfm-apple-deep` re-enabled the Tool phase via `runner.runAll()`.
+
+## [0.4.1] — 2026-05-13
+
+### Added
+- `@Generable` cross-translation for the Apple FM backend.
+  `pfmSchemaToDynamic(_:name:)` walks PFM's JSON-Schema-shaped
+  `GenerationSchema` and produces an Apple `DynamicGenerationSchema`,
+  which is fed to `FoundationModels.GenerationSchema(root:dependencies:)`
+  and `respond(to:schema:)`. Apple's returned `GeneratedContent` is
+  re-serialized as JSON via `generatedContentToJSON(_:)` so PFM's
+  existing Generable decoder takes over.
+- New `pfm-apple-deep` executable mirrors `pfm-deep` / `pfm-mlx-deep`
+  but routes through Apple FM. **PASS 9 / MODEL 0 / FAIL 0** on
+  all 6 Generable shapes + Multimodal + PromptBuilder phases.
+- `PFMDeepKit` scenario phase methods promoted to `public` so
+  downstream executables can pick which phases to run.
+
+## [0.4.0] — 2026-05-13
+
+### Added
+- `PrivateFoundationModelsApple` product — passthrough to Apple's
+  native FoundationModels framework on iOS 26+ / macOS 26+ /
+  visionOS 26+. The same `LanguageModelSession.respond(...)` call
+  site that runs on a CoreML/MLX model on iOS 18 routes directly to
+  Apple's actual on-device LLM here.
+- `AppleFoundationModel.load()`, `.availability`, `.isAvailable`
+  helpers + `AppleFoundationModelBackend`.
+- Transcript / GenerationOptions / SamplingMode translation between
+  PFM and Apple types.
+- New `pfm-apple-smoke` executable.
+- Verified on macOS 26.0: load 0 ms, respond 1.2 s, stream OK.
+
+## [0.3.1] — 2026-05-13
+
+### Added
+- MLXVLM dependency. Linking it registers the VLM model factory with
+  `ModelFactoryRegistry.shared` via NSClassFromString trampoline, so
+  `loadModelContainer(id:)` auto-routes `mlx-community/*-VL-*` repos
+  to the VLM factory and falls back to the LLM factory for text models.
+- `MLXLanguageModel.Catalog.qwen25_VL_7B_4bit` / `.qwen2_VL_7B_4bit`.
+- Try-image-then-fallback in `MLXBackend`: VLM models accept the
+  attachment, text-only LLMs silently drop it instead of crashing.
+
+### Changed
+- Backend-agnostic scenario library extracted into `PFMDeepKit`.
+- `pfm-deep` becomes a CoreML wrapper, `pfm-mlx-deep` (new) is the
+  MLX equivalent. Both call the same `DeepRunner`.
+
+## [0.3.0] — 2026-05-13
+
+### Added
+- Streaming `Generable` partial-snapshot decode (Apple FM cadence
+  parity). `streamResponse(to:generating:)` now emits partial decodes
+  of the target type as soon as enough JSON is on the wire to parse a
+  prefix. Implemented via `JSONExtraction.extractPartialObject` /
+  `PartialJSONParser` state machine. 19 new unit tests +
+  `streamingGenerableEmitsIncrementalSnapshots` integration test.
+- `PrivateFoundationModelsMLX` product. Wraps `ml-explore/mlx-swift-lm`,
+  routes generation to any `mlx-community/*` model under PFM's call
+  site. `MLXLanguageModel.Catalog` ships Qwen3-4B, Llama-3.2-3B,
+  Gemma-2-2B, Mistral-7B, Phi-3.5-mini.
+- New `pfm-mlx-smoke` executable proves the path against
+  `mlx-community/Qwen3.5-0.8B-MLX-4bit` (load 2.0 s, respond 1.4 s).
+
+### Changed
+- README: lead rewritten ("One call site. Three backends." — the
+  iOS 18 polyfill that becomes a runtime passthrough on iOS 26).
+- Roadmap bumped.
+
 ## [0.2.0] — 2026-05-13
 
 Rolls up beta.1 and beta.2 into the first stable v0.2 release.
