@@ -23,6 +23,14 @@ let package = Package(
         // returned by `CoreMLLanguageModel.default()` to use it.
         .library(name: "PrivateFoundationModelsCoreML", targets: ["PrivateFoundationModelsCoreML"]),
 
+        // MLX-Swift backend. Routes generation to ml-explore/mlx-swift-lm
+        // (the official Apple MLX Swift LM runtime split out of
+        // mlx-swift-examples in 2026-04). Lights up `mlx-community/*`
+        // models — Llama, Qwen, Gemma, Mistral, Phi, and the rest — under
+        // the same `LanguageModelSession.respond(...)` API as the CoreML
+        // backend.
+        .library(name: "PrivateFoundationModelsMLX", targets: ["PrivateFoundationModelsMLX"]),
+
         // End-to-end verification harness. Exercises every public API path
         // (respond / streamResponse / Generable / Tools / transcript) against
         // a real on-device model. Run with:
@@ -45,11 +53,21 @@ let package = Package(
         // checks even when the API surface works.
         //   swift run -c release pfm-deep
         .executable(name: "pfm-deep", targets: ["PFMDeep"]),
+
+        // Minimal end-to-end check for the MLX backend. Downloads (or
+        // resolves from cache) an `mlx-community/*` repo and runs both
+        // `respond(to:)` and `streamResponse(to:)` against it.
+        //   swift run -c release pfm-mlx-smoke
+        .executable(name: "pfm-mlx-smoke", targets: ["PFMMLXSmoke"]),
     ],
     dependencies: [
         .package(url: "https://github.com/john-rocky/CoreML-LLM", from: "1.8.0"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.0.0"),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-lm", from: "3.31.3"),
+        // Provides `HuggingFace.HubClient`, referenced by the macro
+        // expansion of `#hubDownloader()` in MLXHuggingFace.
+        .package(url: "https://github.com/huggingface/swift-huggingface.git", from: "0.8.1"),
     ],
     targets: [
         .macro(
@@ -76,6 +94,24 @@ let package = Package(
                 "PrivateFoundationModels",
                 .product(name: "CoreMLLLM", package: "CoreML-LLM"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+        .target(
+            name: "PrivateFoundationModelsMLX",
+            dependencies: [
+                "PrivateFoundationModels",
+                .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                .product(name: "MLXHuggingFace", package: "mlx-swift-lm"),
+                // Required so the `#huggingFaceTokenizerLoader()` macro
+                // expansion can reference `Tokenizers.AutoTokenizer`.
+                .product(name: "Tokenizers", package: "swift-transformers"),
+                // Required so the `#hubDownloader()` macro expansion can
+                // reference `HuggingFace.HubClient`.
+                .product(name: "HuggingFace", package: "swift-huggingface"),
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),
@@ -115,6 +151,16 @@ let package = Package(
             dependencies: [
                 "PrivateFoundationModels",
                 "PrivateFoundationModelsCoreML",
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+        .executableTarget(
+            name: "PFMMLXSmoke",
+            dependencies: [
+                "PrivateFoundationModels",
+                "PrivateFoundationModelsMLX",
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v6),

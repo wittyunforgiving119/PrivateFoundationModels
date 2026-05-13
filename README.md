@@ -70,14 +70,37 @@ targets: [
 ]
 ```
 
-Two products:
+Three products:
 
 - **`PrivateFoundationModels`** — the API surface (`LanguageModelSession`, `Instructions`, …). Zero runtime deps. Import this everywhere.
 - **`PrivateFoundationModelsCoreML`** — the default backend. Depends on [`john-rocky/CoreML-LLM`](https://github.com/john-rocky/CoreML-LLM), which runs Gemma 4 / Qwen3.5 / Qwen3-VL / LFM2.5 / FunctionGemma / EmbeddingGemma on the Apple Neural Engine. Import only in the target that wires `SystemLanguageModel.default`.
+- **`PrivateFoundationModelsMLX`** — the MLX backend. Depends on [`ml-explore/mlx-swift-lm`](https://github.com/ml-explore/mlx-swift-lm), which runs any `mlx-community/*` model — Llama, Qwen, Gemma, Mistral, Phi — on Apple Silicon GPU. Same `LanguageModelSession.respond(...)` API as the CoreML backend; flip one line to switch.
 
-Both are pure SPM. No CocoaPods. No special build phase. No model files in the repo — the backend downloads on first call.
+All three are pure SPM. No CocoaPods. No special build phase. No model files in the repo — the backend downloads on first call.
 
-You can also wire your own `LanguageModelBackend` (MLX-Swift, llama.cpp, a remote API) — see [Bring your own backend](#bring-your-own-backend) below.
+You can also wire your own `LanguageModelBackend` (llama.cpp, a remote API, etc.) — see [Bring your own backend](#bring-your-own-backend) below.
+
+### MLX backend (alternative)
+
+If you'd rather route generation to MLX-Swift instead of CoreML — same API, different runtime:
+
+```swift
+import PrivateFoundationModels
+import PrivateFoundationModelsMLX
+
+SystemLanguageModel.default = SystemLanguageModel(
+    backend: try await MLXLanguageModel.load(.qwen3_4B_4bit)
+)
+
+let session = LanguageModelSession(instructions: "Be brief.")
+print(try await session.respond(to: "Capital of France?").content)
+```
+
+Curated catalog: `.qwen3_4B_4bit`, `.llama3_2_3B_4bit`, `.gemma2_2B_4bit`, `.mistral7B_4bit`, `.phi3_5_mini_4bit`. Anything else goes through `.custom("mlx-community/<repo>")`. First call downloads via the HuggingFace Hub client (the standard `~/.cache/huggingface/hub/` cache); subsequent calls resolve from disk.
+
+End-to-end smoke test on Apple M4 Max, against `mlx-community/Qwen3.5-0.8B-MLX-4bit`: load 2.0 s, `respond(to:)` 1.4 s, `streamResponse(to:)` works. See [`docs/pfm-mlx-smoke.log`](docs/pfm-mlx-smoke.log).
+
+> **Build note:** MLX-Swift uses Metal shader compilation, which the SPM CLI (`swift run`) can't perform. Build executables that import `PrivateFoundationModelsMLX` with `xcodebuild` or from inside Xcode. iOS / macOS apps built via Xcode are unaffected.
 
 ### Model download
 
@@ -121,6 +144,8 @@ for try await snapshot in stream {
 }
 let final = try await stream.collect()
 ```
+
+`streamResponse(to:generating:)` emits **partial decodes of the Generable** as soon as enough of the JSON is on the wire to parse a prefix — fields populate one at a time, optionals stay `nil` until they're written, mirroring Apple's `Snapshot<T>` cadence. See [`PartialJSONParserTests.streamingGenerableEmitsIncrementalSnapshots`](Tests/PrivateFoundationModelsTests/PartialJSONParserTests.swift) for the exact emission semantics.
 
 ### Vision input (multimodal)
 
@@ -325,11 +350,13 @@ Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1, against `mlboydaisuke/lfm2.
 
 - v0.1 — Core API + CoreML backend + foreground HF fetcher
 - v0.1.1 — `@Generable` macro + `@Guide(description:)`
-- **v0.2 (current)** — Qwen3.5 routing + `Prompt` / `@PromptBuilder` /
+- v0.2 — Qwen3.5 routing + `Prompt` / `@PromptBuilder` /
   `Guardrails` parity + vision input on the session API
-- v0.3 — Qwen3-VL routing (`Qwen3VL2BStatefulGenerator`) + WWDC 2026 iOS
+- **v0.3 (current)** — Streaming `Generable` partial-snapshot decode +
+  MLX-Swift backend (`mlx-community/*` models — Llama, Qwen, Gemma,
+  Mistral, Phi)
+- v0.4 — Qwen3-VL routing (`Qwen3VL2BStatefulGenerator`) + WWDC 2026 iOS
   27 API diff absorption
-- v0.4 — MLX-Swift backend
 - v0.5 — llama.cpp / GGUF backend
 - v0.6 — Grammar-constrained decoding
 - v0.7 — Audio input on the session API + speculative decoding
