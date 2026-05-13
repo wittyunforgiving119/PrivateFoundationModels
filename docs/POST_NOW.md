@@ -6,6 +6,12 @@ Each link below opens the target platform's compose form **with the title, body,
 
 ## 1. X (recommended first move)
 
+### Multi-machine callout (helps fill in the chart)
+
+[**→ Post the "help fill this chart" callout**](https://twitter.com/intent/tweet?text=Help%20me%20fill%20this%20chart%20out.%0A%0ASame%20PFM%20bench%20on%20YOUR%20Mac%20%28M1%20%2F%20M2%20%2F%20M3%20%2F%20M4%20%2F%20Pro%20%2F%20Max%20%2F%20Studio%20%2F%20Vision%20Pro%29%20%E2%86%92%201%20PR%20with%20one%20CSV%20row%20appended.%0A%0A%20%20swift%20run%20pfm-bench-apple%20--csv-append%20docs%2FBENCHMARKS.csv%0A%0Agithub.com%2Fjohn-rocky%2FPrivateFoundationModels%2Fblob%2Fmain%2Fdocs%2FBENCHMARKS.csv)
+
+(246 chars. Attach `docs/media/runtime-comparison-m4max.png` so people see the chart they'd be filling in.)
+
 ### v0.10.2 — runtime comparison hook (recommended for follow-up tweet)
 
 [**→ Post the runtime-comparison tweet on X**](https://twitter.com/intent/tweet?text=Same%20Qwen3.5-0.8B%20model.%20Same%20prompt.%20Apple%20M4%20Max.%0A%0A%C2%B7%20CoreML%20%2F%20ANE%20%20%E2%80%94%20526%20ms%20TTFT%2C%20158%20chars%2Fsec%0A%C2%B7%20MLX%20%2F%20GPU%204b%20%20%E2%80%94%2043%20ms%20TTFT%2C%20781%20chars%2Fsec%0A%0A12%C3%97%20TTFT%2C%205%C3%97%20throughput.%20One%20PrivateFoundationModels%20call%20site%20routes%20between%20them.%0A%0Agithub.com%2Fjohn-rocky%2FPrivateFoundationModels)

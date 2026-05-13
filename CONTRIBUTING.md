@@ -2,6 +2,40 @@
 
 Thanks for thinking about contributing. PFM is small enough that there isn't a huge process — open an issue or PR and we'll talk.
 
+## 🔥 Most useful contribution right now: append your hardware to the bench CSV
+
+The runtime-comparison chart in the README only has one machine on it (M4 Max). Numbers from any other Apple Silicon device — **M1, M2, M3, M4 / Pro / Max / Ultra, iPhone, iPad, Vision Pro** — would dramatically strengthen the comparison. Two-step contribution:
+
+```bash
+# 1. Clone, run the bench against the same models we already have rows for.
+git clone https://github.com/john-rocky/PrivateFoundationModels
+cd PrivateFoundationModels
+
+swift run -c release pfm-bench-apple  --csv-append docs/BENCHMARKS.csv
+swift run -c release pfm-bench-coreml --csv-append docs/BENCHMARKS.csv --model qwen3.5-0.8B
+swift run -c release pfm-bench-coreml --csv-append docs/BENCHMARKS.csv --model lfm2.5-350m
+
+# MLX needs xcodebuild (Metal shaders), one-time:
+xcodebuild -scheme pfm-bench-mlx -configuration Release \
+    -destination "platform=macOS" -skipMacroValidation build
+$(find ~/Library/Developer/Xcode/DerivedData -name pfm-bench-mlx -path '*Release*' -type f | head -1) \
+    --csv-append docs/BENCHMARKS.csv
+```
+
+That'll append rows tagged with your CPU brand string (auto-detected via `sysctl`). Want a friendlier name? Pass `--hardware "MacBook Pro M3 Pro 18GB"`.
+
+```bash
+# 2. PR.
+git checkout -b bench-$(uname -m)-$(date +%Y%m%d)
+git add docs/BENCHMARKS.csv
+git commit -m "BENCHMARKS: append $(sysctl -n machdep.cpu.brand_string) rows"
+gh pr create --title "Bench: $(sysctl -n machdep.cpu.brand_string)" --body "Added bench rows for $(sysctl -n machdep.cpu.brand_string) on macOS $(sw_vers -productVersion)."
+```
+
+That's it. I'll re-render the [`runtime-comparison-m4max.png`](docs/media/runtime-comparison-m4max.png) chart once we have ≥ 2 distinct hardware tags so the comparison gets visibly richer.
+
+iPhone / iPad / Vision Pro contributions: see [`Examples/PFMiPhoneBench/`](Examples/PFMiPhoneBench/) for a one-tap SwiftUI runner (lands shortly).
+
 ## What's most useful right now
 
 - **New CoreML model entries** for `CoreMLLanguageModel.Catalog`. If you've packaged an `mlboydaisuke/*-coreml` (or compatible) HuggingFace repo that runs via `CoreMLLLM.load(...)`, a one-line catalog addition with a comment about expected tok/s on iPhone is enough.
