@@ -6,6 +6,101 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.10.4] — 2026-05-13
+
+### Added
+- `Examples/PFMiPhoneBench/` — one-tap iOS bench app. Open it,
+  tap **Run all**, walk away ~5 minutes. Benches Apple FM (iOS 26+),
+  CoreML LFM2.5-350M, CoreML Qwen3.5-0.8B, MLX Qwen3.5-0.8B-4bit
+  sequentially with explicit release between backends. CSV written
+  to Documents + clipboard + offered via Share Sheet. Device label
+  uses `sysctl hw.machine` + `UIDevice.systemVersion` so output
+  rows tag with `iPhone17,1 / iOS 26.1` style identity.
+- Generates the project via `xcodegen` from `project.yml`.
+
+## [0.10.3] — 2026-05-13
+
+### Added
+- `BenchLanguage` enum + `Bench.runAllLanguages` helper in
+  PFMBenchKit. Each `pfm-bench-*` exec accepts `--multilang` to
+  run the harness once per curated language (English / Spanish /
+  Korean / Japanese / Chinese).
+- `docs/BENCHMARKS_MULTILANG.csv` — M4 Max baseline across all 5
+  languages × all 3 runtimes (15 rows).
+- `docs/MULTILANG_BENCH.md` + `docs/media/multilang-comparison-m4max.png`
+  — observations: Spanish is the throughput champion across all
+  backends; MLX/GPU wins everywhere on M4 Max; CJK rows produce
+  shorter outputs (fewer chars but more bits per char).
+
+## [0.10.2] — 2026-05-13
+
+### Added
+- `docs/RUNTIME_COMPARISON.md` — same `Qwen3.5-0.8B`, same prompt,
+  same M4 Max. CoreML/ANE FP16 vs MLX/GPU 4-bit: 12.2× TTFT, 5.0×
+  throughput. Plus Apple FM 3 B and CoreML LFM2.5-350M as
+  reference points. Explicit precision disclaimer.
+- `docs/media/runtime-comparison-m4max.png` matplotlib chart
+  generated from `docs/BENCHMARKS.csv`. Embedded as the README hero.
+- Updated `bin/post-x.py` DEFAULT_TWEET to the runtime-comparison
+  hook (251 / 280 chars).
+
+## [0.10.1] — 2026-05-13
+
+### Added
+- `pfm-bench-{apple,coreml,mlx}` accept:
+  - `--csv` — emit CSV row to stdout (header on first line).
+  - `--csv-append <path>` — append rows to PATH; creates with
+    header if missing.
+  - `--hardware <label>` — override the auto-detected CPU brand
+    string (defaults to `sysctl machdep.cpu.brand_string`).
+- `docs/BENCHMARKS.csv` seeded with the Apple M4 Max baseline so
+  other contributors can append their rows.
+- `BenchRow.csvRow(...)` + `BenchRow.csvHeader` + `emitBenchOutput([...])`
+  helpers in PFMBenchKit.
+
+## [0.10.0] — 2026-05-13
+
+### Added
+- `ModelRegistry` class in PFMServeKit. `pfm-serve-*` execs now
+  accept repeated `--model` (and `--embedding-model` on MLX)
+  flags; each becomes a registered backend. Request body's
+  `model:` field routes per-call. First-registered fallback for
+  unknown / missing values.
+- `PFMServer.init(options:registry:)` is the new primary form.
+  `init(options:modelLabel:)` kept as a convenience for source-compat.
+- `/v1/models` lists every registered chat and embedding backend.
+- Per-request: a fresh `SystemLanguageModel(backend:)` wraps the
+  resolved backend and is passed to `LanguageModelSession(model:)`.
+  No global mutation; concurrent requests safe.
+
+### Verified
+- Two MLX chat models in one process (`Qwen3.5-0.8B` + `FastVLM-0.5B`)
+  on Apple M4 Max, `model:` field routing between them, unknown-id
+  fallback to first-registered — all correct.
+
+## [0.9.2] — 2026-05-13
+
+### Verified (end-to-end on real MLX models)
+- **v0.8.1 vision** — Downloaded `mlx-community/FastVLM-0.5B-bf16`
+  (1.2 GB). Sent a 256×256 test image (red top-left / green
+  top-right / blue bottom-center squares) via OpenAI content
+  array. Model correctly identified red top-left + green
+  top-right; blue position called "bottom-left" instead of
+  "bottom-center" — model-quality issue at 0.5B, not framework.
+  Full HTTP → base64 → CGImage → `respond(to:image:)` chain
+  verified. Captured in `docs/pfm-vision-sample.txt`.
+- **v0.9.0 embeddings** — Downloaded
+  `sentence-transformers/all-MiniLM-L6-v2` (87 MB). MLXEmbedder
+  pipeline (tokenize → right-pad → attention mask → BERT forward
+  → mean pool → L2 normalize) produced 384-dim consistent
+  vectors; cosine matrix correct on the diagonal; Swift↔Swift
+  (0.847) > Swift↔cake (0.77, 0.84) — semantic ranking PASS.
+  Captured in `docs/pfm-embeddings-sample.txt`.
+
+### Changed
+- Removed "experimental" marker on `MLXEmbedder` source +
+  Examples/PythonClient README.
+
 ## [0.9.1] — 2026-05-13
 
 ### Added
