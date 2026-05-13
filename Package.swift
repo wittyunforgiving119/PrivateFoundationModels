@@ -59,6 +59,12 @@ let package = Package(
         // `respond(to:)` and `streamResponse(to:)` against it.
         //   swift run -c release pfm-mlx-smoke
         .executable(name: "pfm-mlx-smoke", targets: ["PFMMLXSmoke"]),
+
+        // Same scenario matrix as `pfm-deep`, but routed through the
+        // MLX-Swift backend. Diff the two outputs to verify backend
+        // feature parity.
+        //   xcodebuild -scheme pfm-mlx-deep ...
+        .executable(name: "pfm-mlx-deep", targets: ["PFMMLXDeep"]),
     ],
     dependencies: [
         .package(url: "https://github.com/john-rocky/CoreML-LLM", from: "1.8.0"),
@@ -146,9 +152,21 @@ let package = Package(
                 .swiftLanguageMode(.v6),
             ]
         ),
+        // Backend-agnostic scenario library: every Generable / Tool /
+        // Multimodal / PromptBuilder scenario lives here so the matrix
+        // stays in sync across the CoreML and MLX deep-verification
+        // executables below.
+        .target(
+            name: "PFMDeepKit",
+            dependencies: ["PrivateFoundationModels"],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
         .executableTarget(
             name: "PFMDeep",
             dependencies: [
+                "PFMDeepKit",
                 "PrivateFoundationModels",
                 "PrivateFoundationModelsCoreML",
             ],
@@ -159,6 +177,17 @@ let package = Package(
         .executableTarget(
             name: "PFMMLXSmoke",
             dependencies: [
+                "PrivateFoundationModels",
+                "PrivateFoundationModelsMLX",
+            ],
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
+        .executableTarget(
+            name: "PFMMLXDeep",
+            dependencies: [
+                "PFMDeepKit",
                 "PrivateFoundationModels",
                 "PrivateFoundationModelsMLX",
             ],

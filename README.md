@@ -98,7 +98,7 @@ print(try await session.respond(to: "Capital of France?").content)
 
 Curated catalog: `.qwen3_4B_4bit`, `.llama3_2_3B_4bit`, `.gemma2_2B_4bit`, `.mistral7B_4bit`, `.phi3_5_mini_4bit`. Anything else goes through `.custom("mlx-community/<repo>")`. First call downloads via the HuggingFace Hub client (the standard `~/.cache/huggingface/hub/` cache); subsequent calls resolve from disk.
 
-End-to-end smoke test on Apple M4 Max, against `mlx-community/Qwen3.5-0.8B-MLX-4bit`: load 2.0 s, `respond(to:)` 1.4 s, `streamResponse(to:)` works. See [`docs/pfm-mlx-smoke.log`](docs/pfm-mlx-smoke.log).
+End-to-end smoke test on Apple M4 Max, against `mlx-community/Qwen3.5-0.8B-MLX-4bit`: load 2.0 s, `respond(to:)` 1.4 s, `streamResponse(to:)` works. See [`docs/pfm-mlx-smoke.log`](docs/pfm-mlx-smoke.log). The full Generable × Tool × Multimodal × PromptBuilder matrix in [`pfm-mlx-deep`](Sources/PFMMLXDeep/main.swift) (the same scenarios `pfm-deep` runs against CoreML) returns **PASS 9 / MODEL 5 / FAIL 0** on the MLX side — including 7 incremental snapshots from streaming `Generable`. See [`docs/pfm-mlx-deep.log`](docs/pfm-mlx-deep.log).
 
 > **Build note:** MLX-Swift uses Metal shader compilation, which the SPM CLI (`swift run`) can't perform. Build executables that import `PrivateFoundationModelsMLX` with `xcodebuild` or from inside Xcode. iOS / macOS apps built via Xcode are unaffected.
 
@@ -335,16 +335,17 @@ If you find a method or initializer in Apple's docs that PFM doesn't ship, pleas
 
 ## Verified
 
-Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1, against `mlboydaisuke/lfm2.5-350m-coreml` on the Apple Neural Engine:
+Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1, against `mlboydaisuke/lfm2.5-350m-coreml` (CoreML / ANE) and `mlx-community/Qwen3.5-0.8B-MLX-4bit` (MLX / GPU):
 
 | Harness | What it proves | Result |
 |---|---|---|
-| `swift test` | Session logic, schema decoder, tool dispatch, error wrapping — all stub-backed for determinism | **44 / 44 pass** ([deep tests](docs/DEEP_VERIFICATION.md)) |
+| `swift test` | Session logic, schema decoder, tool dispatch, error wrapping — all stub-backed for determinism | **90 / 90 pass** ([deep tests](docs/DEEP_VERIFICATION.md)) |
 | `swift run -c release pfm-verify` | Every public API path against a real model | **10 / 10 pass** ([log](docs/pfm-verify.log)) |
 | `swift run -c release pfm-portability` | Real Apple-FM-shaped code compiled and ran unchanged | **8 / 8 pass** ([log](docs/pfm-portability.log)) |
-| `swift run -c release pfm-deep` | Every Generable shape × Tool pattern against the real model | **PASS 7 / MODEL 4 / FAIL 0** ([log](docs/pfm-deep.log)) |
+| `swift run -c release pfm-deep` | Every Generable shape × Tool pattern against the real CoreML model | **PASS 7 / MODEL 4 / FAIL 0** ([log](docs/pfm-deep.log)) |
+| `pfm-mlx-deep` (xcodebuild) | Same scenario matrix routed through MLX-Swift on a real `mlx-community/*` model | **PASS 9 / MODEL 5 / FAIL 0** ([log](docs/pfm-mlx-deep.log)) |
 
-`MODEL` = API works, content quality limited by the 350 M-parameter model used for verification (a larger model lands the test in PASS). `FAIL` = framework / backend regression — zero is the only acceptable number.
+`MODEL` = API works, content quality limited by the small model used for verification (a larger model lands the test in PASS). `FAIL` = framework / backend regression — zero is the only acceptable number across both backends.
 
 ## Roadmap
 

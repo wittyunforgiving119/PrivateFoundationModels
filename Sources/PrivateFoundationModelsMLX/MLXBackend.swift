@@ -61,14 +61,13 @@ public final class MLXBackend: LanguageModelBackend, @unchecked Sendable {
             history: prepared.history,
             generateParameters: Self.convertOptions(options)
         )
-        let images = Self.images(from: attachments)
+        // Image attachments are silently dropped until MLXVLM is wired
+        // up — MLXLMCommon's ChatSession will route them to the model's
+        // image processor, which fails on text-only LLMs.
+        _ = Self.images(from: attachments)
         let raw: String
         do {
-            if let firstImage = images.first {
-                raw = try await session.respond(to: prepared.lastPrompt, image: firstImage)
-            } else {
-                raw = try await session.respond(to: prepared.lastPrompt)
-            }
+            raw = try await session.respond(to: prepared.lastPrompt)
         } catch is CancellationError {
             throw GenerationError.cancelled
         } catch {
@@ -106,21 +105,14 @@ public final class MLXBackend: LanguageModelBackend, @unchecked Sendable {
                         history: prepared.history,
                         generateParameters: Self.convertOptions(options)
                     )
-                    let images = Self.images(from: attachments)
-                    let upstream: AsyncThrowingStream<String, Error>
-                    if let firstImage = images.first {
-                        upstream = session.streamResponse(
-                            to: prepared.lastPrompt,
-                            images: [firstImage],
-                            videos: []
-                        )
-                    } else {
-                        upstream = session.streamResponse(
+                    // Same drop-attachments policy as `generate(...)` above.
+                    _ = Self.images(from: attachments)
+                    let upstream: AsyncThrowingStream<String, Error> =
+                        session.streamResponse(
                             to: prepared.lastPrompt,
                             images: [],
                             videos: []
                         )
-                    }
 
                     var cumulative = ""
                     var sawToolMarker = false
