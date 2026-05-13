@@ -6,6 +6,11 @@ import Foundation
 import HuggingFace
 import MLXHuggingFace
 import MLXLLM
+// Linking MLXVLM is enough to register the VLM model factory with
+// `ModelFactoryRegistry.shared` (via NSClassFromString trampoline), so
+// `loadModelContainer(id:)` will pick up `mlx-community/*-VL-*` repos
+// automatically.
+import MLXVLM
 import MLXLMCommon
 import PrivateFoundationModels
 import Tokenizers
@@ -36,6 +41,8 @@ public enum MLXLanguageModel {
         case gemma2_2B_4bit
         case mistral7B_4bit
         case phi3_5_mini_4bit
+        case qwen25_VL_7B_4bit       // vision-language (MLXVLM)
+        case qwen2_VL_7B_4bit        // vision-language (MLXVLM)
         case custom(String)
 
         public var id: String {
@@ -45,6 +52,8 @@ public enum MLXLanguageModel {
             case .gemma2_2B_4bit:     return "mlx-community/gemma-2-2b-it-4bit"
             case .mistral7B_4bit:     return "mlx-community/Mistral-7B-Instruct-v0.3-4bit"
             case .phi3_5_mini_4bit:   return "mlx-community/Phi-3.5-mini-instruct-4bit"
+            case .qwen25_VL_7B_4bit:  return "mlx-community/Qwen2.5-VL-7B-Instruct-4bit"
+            case .qwen2_VL_7B_4bit:   return "mlx-community/Qwen2-VL-7B-Instruct-4bit"
             case .custom(let r):      return r
             }
         }

@@ -61,13 +61,23 @@ public final class MLXBackend: LanguageModelBackend, @unchecked Sendable {
             history: prepared.history,
             generateParameters: Self.convertOptions(options)
         )
-        // Image attachments are silently dropped until MLXVLM is wired
-        // up — MLXLMCommon's ChatSession will route them to the model's
-        // image processor, which fails on text-only LLMs.
-        _ = Self.images(from: attachments)
+        let images = Self.images(from: attachments)
         let raw: String
         do {
-            raw = try await session.respond(to: prepared.lastPrompt)
+            if let firstImage = images.first {
+                // VLM models accept this; for text-only LLM models the
+                // image is silently ignored on a retry below.
+                do {
+                    raw = try await session.respond(
+                        to: prepared.lastPrompt, image: firstImage)
+                } catch is CancellationError {
+                    throw GenerationError.cancelled
+                } catch {
+                    raw = try await session.respond(to: prepared.lastPrompt)
+                }
+            } else {
+                raw = try await session.respond(to: prepared.lastPrompt)
+            }
         } catch is CancellationError {
             throw GenerationError.cancelled
         } catch {
@@ -105,12 +115,15 @@ public final class MLXBackend: LanguageModelBackend, @unchecked Sendable {
                         history: prepared.history,
                         generateParameters: Self.convertOptions(options)
                     )
-                    // Same drop-attachments policy as `generate(...)` above.
-                    _ = Self.images(from: attachments)
+                    let images = Self.images(from: attachments)
+                    // For VLM models we pass the image straight through;
+                    // for text-only LLMs MLXLMCommon will treat the
+                    // images list as empty since the model doesn't have
+                    // an image processor.
                     let upstream: AsyncThrowingStream<String, Error> =
                         session.streamResponse(
                             to: prepared.lastPrompt,
-                            images: [],
+                            images: images.isEmpty ? [] : [images[0]],
                             videos: []
                         )
 

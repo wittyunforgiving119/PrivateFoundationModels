@@ -96,7 +96,7 @@ let session = LanguageModelSession(instructions: "Be brief.")
 print(try await session.respond(to: "Capital of France?").content)
 ```
 
-Curated catalog: `.qwen3_4B_4bit`, `.llama3_2_3B_4bit`, `.gemma2_2B_4bit`, `.mistral7B_4bit`, `.phi3_5_mini_4bit`. Anything else goes through `.custom("mlx-community/<repo>")`. First call downloads via the HuggingFace Hub client (the standard `~/.cache/huggingface/hub/` cache); subsequent calls resolve from disk.
+Text-only catalog: `.qwen3_4B_4bit`, `.llama3_2_3B_4bit`, `.gemma2_2B_4bit`, `.mistral7B_4bit`, `.phi3_5_mini_4bit`. Vision-language catalog (lit up by linking MLXVLM, requires no extra import in app code): `.qwen25_VL_7B_4bit`, `.qwen2_VL_7B_4bit`. Anything else goes through `.custom("mlx-community/<repo>")` — `loadModelContainer(id:)` tries the VLM factory first and falls back to the LLM factory, so vision-capable repos auto-route correctly. First call downloads via the HuggingFace Hub client (the standard `~/.cache/huggingface/hub/` cache); subsequent calls resolve from disk.
 
 End-to-end smoke test on Apple M4 Max, against `mlx-community/Qwen3.5-0.8B-MLX-4bit`: load 2.0 s, `respond(to:)` 1.4 s, `streamResponse(to:)` works. See [`docs/pfm-mlx-smoke.log`](docs/pfm-mlx-smoke.log). The full Generable × Tool × Multimodal × PromptBuilder matrix in [`pfm-mlx-deep`](Sources/PFMMLXDeep/main.swift) (the same scenarios `pfm-deep` runs against CoreML) returns **PASS 9 / MODEL 5 / FAIL 0** on the MLX side — including 7 incremental snapshots from streaming `Generable`. See [`docs/pfm-mlx-deep.log`](docs/pfm-mlx-deep.log).
 

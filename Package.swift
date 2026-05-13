@@ -110,6 +110,11 @@ let package = Package(
             dependencies: [
                 "PrivateFoundationModels",
                 .product(name: "MLXLLM", package: "mlx-swift-lm"),
+                // VLM factory registers itself with ModelFactoryRegistry
+                // via an NSClassFromString trampoline, so simply linking
+                // this product opens the `mlx-community/*-VL-*` family
+                // without changing any call sites.
+                .product(name: "MLXVLM", package: "mlx-swift-lm"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
                 .product(name: "MLXHuggingFace", package: "mlx-swift-lm"),
                 // Required so the `#huggingFaceTokenizerLoader()` macro

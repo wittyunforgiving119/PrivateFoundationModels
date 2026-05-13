@@ -3,7 +3,7 @@
  PrivateFoundationModels deep verification — MLX
 ──────────────────────────────────────────────────────────────────────────────
   model:          mlx-community/Qwen3.5-0.8B-MLX-4bit
-  date:           2026-05-13 04:02:34 +0000
+  date:           2026-05-13 04:05:37 +0000
   • Resolving mlx-community/Qwen3.5-0.8B-MLX-4bit…
   • Downloading 0%
   • Downloading 0%
@@ -14,17 +14,17 @@
  Generable scenarios (structured output)
 ──────────────────────────────────────────────────────────────────────────────
   • G1. simple-object (2 strings) — prompt: Pick one famous landmark and return its city and country.
-  ✓ G1. simple-object (2 strings) → city=New York country=United States (1212 ms)
+  ✓ G1. simple-object (2 strings) → city=New York country=United States (693 ms)
   • G2. mixed-primitives (string + number + bool) — prompt: Invent a sensor reading. Pick a short name, a numeric value, and an active boolean.
-  ✓ G2. mixed-primitives (string + number + bool) → name=temp value=22.5 active=true (67 ms)
+  ✓ G2. mixed-primitives (string + number + bool) → name=temp value=22.5 active=true (206 ms)
   • G3. array-of-strings (3 items) — prompt: Make a shopping list with a name and 3 items.
-  ✓ G3. array-of-strings (3 items) → name=Shopping List items=["Apple", "Bread", "Milk"] (66 ms)
+  ✓ G3. array-of-strings (3 items) → name=Shopping List items=["Apple", "Bread", "Milk"] (185 ms)
   • G4. nested-object (2 levels) — prompt: Invent a person profile with a name, age, and address (city, country).
-  ✓ G4. nested-object (2 levels) → Alex, age 25, New York, United States (155 ms)
+  ✓ G4. nested-object (2 levels) → Alex, age 25, New York, United States (369 ms)
   • G5. optional-fields (absent OK) — prompt: Make up a one-line article. Title only, no summary.
-  ✓ G5. optional-fields (absent OK) → title=The Future of AI Ethics summary=<absent> (47 ms)
+  ✓ G5. optional-fields (absent OK) → title=The Future of AI Ethics summary=<absent> (146 ms)
   • G6. streaming-generable (Profile) — prompt: Invent a person profile. Name, age, city, country.
-  ✓ G6. streaming-generable (Profile) → 7 parseable snapshots, final Alex, age 25, New York, United States (154 ms)
+  ✓ G6. streaming-generable (Profile) → 7 parseable snapshots, final Alex, age 25, New York, United States (349 ms)
 
 ──────────────────────────────────────────────────────────────────────────────
  Tool calling scenarios
@@ -44,11 +44,11 @@
  Multimodal + builder scenarios
 ──────────────────────────────────────────────────────────────────────────────
   • M1. respond(to:image:) — prompt: Describe what you see.
-  ✓ M1. respond(to:image:) → "I am an AI language model designed to assist with various tasks, including writing, coding, and more, by processing your input and generatin…" (92 ms)
+  ✓ M1. respond(to:image:) → "This image shows a solid blue square with no visible content or details." (1661 ms)
   • M2. streamResponse(to:image:)
-  ✓ M2. streamResponse(to:image:) → 45 snapshots, final "I am unable to describe images directly, as I am an AI text model and cannot see or process images. However, I can help you describe the ima…" (130 ms)
+  ✓ M2. streamResponse(to:image:) → 43 snapshots, final "This image is a solid, unchanging blue square with no visible content, text, or details. It appears to be a placeholder or a blank image, po…" (494 ms)
   • M3. respond { PromptBuilder }
-  ✓ M3. PromptBuilder → "Bonjour." (21 ms)
+  ✓ M3. PromptBuilder → "Bonjour." (52 ms)
 
 ──────────────────────────────────────────────────────────────────────────────
  Summary
@@ -83,8 +83,8 @@
   MODEL  T5. throwing-tool surfaces error
         tool not invoked
   PASS   M1. respond(to:image:)
-        "I am an AI language model designed to assist with various tasks, including writing, coding, and more, by processing your input and generatin…"
+        "This image shows a solid blue square with no visible content or details."
   PASS   M2. streamResponse(to:image:)
-        45 snapshots
+        43 snapshots
   PASS   M3. respond { PromptBuilder }
         "Bonjour."
