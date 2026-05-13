@@ -151,17 +151,27 @@ final class BenchRunner: ObservableObject {
                                  timestamp, hwEscaped, escaped, loadMs, medTTFT, medTotal, medChars, cps)
             csv += csvRow
             appendLog(String(format: "  → median: ttft %.0f ms, throughput %.1f chars/sec", medTTFT, cps))
+
+            // Incremental save: persist what we have after every
+            // backend so a later crash / hang / kill doesn't lose
+            // earlier rows. The file is overwritten each time.
+            persistCSV()
+            UIPasteboard.general.string = csv
         }
 
-        // Persist CSV to Documents so user can find it via Files app.
-        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let url = docs.appendingPathComponent("pfm-bench-\(Int(Date().timeIntervalSince1970)).csv")
-            try? csv.data(using: .utf8)?.write(to: url)
-            appendLog("\nCSV saved: \(url.lastPathComponent)")
-        }
         UIPasteboard.general.string = csv
         appendLog("CSV copied to clipboard.")
         status = .done
+    }
+
+    /// Overwrite the canonical Documents CSV with whatever rows are
+    /// currently accumulated. Safe to call between every backend.
+    private func persistCSV() {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let url = docs.appendingPathComponent("pfm-bench-latest.csv")
+        try? csv.data(using: .utf8)?.write(to: url, options: .atomic)
     }
 
     private func runOne(timed: Bool) async throws -> (ttft: Double, total: Double, chars: Int) {
@@ -216,6 +226,7 @@ final class BenchRunner: ObservableObject {
 struct BenchView: View {
     @StateObject private var runner = BenchRunner()
     @State private var showShare = false
+    @State private var didAutoStart = false
 
     var body: some View {
         NavigationStack {
@@ -265,6 +276,22 @@ struct BenchView: View {
             .navigationTitle("PFM iPhone Bench")
             .sheet(isPresented: $showShare) {
                 ShareSheet(items: [runner.csv])
+            }
+            .onAppear {
+                // Keep the screen awake while the bench runs.
+                UIApplication.shared.isIdleTimerDisabled = true
+                // Auto-kick the bench once on first appearance so the
+                // device can be left alone for the entire run.
+                guard !didAutoStart else { return }
+                didAutoStart = true
+                Task {
+                    // Small delay so SwiftUI finishes laying out before
+                    // the bench monopolizes the main actor / GPU.
+                    try? await Task.sleep(for: .seconds(2))
+                    if case .idle = runner.status {
+                        await runner.runAll()
+                    }
+                }
             }
         }
     }
