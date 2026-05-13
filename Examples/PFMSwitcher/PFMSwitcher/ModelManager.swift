@@ -73,12 +73,10 @@ final class ModelManager: ObservableObject {
         observeMemoryWarning()
     }
 
-    deinit {
-        memoryTimer?.invalidate()
-        if let memoryWarningObserver {
-            NotificationCenter.default.removeObserver(memoryWarningObserver)
-        }
-    }
+    // No explicit deinit: `ModelManager` is held by the App's @StateObject
+    // for the app's entire lifetime. The timer + observer get reclaimed by
+    // the OS at exit. (Swift 6 forbids touching @MainActor properties from
+    // a nonisolated deinit, so this is the right shape anyway.)
 
     // MARK: - Switching
 
@@ -229,7 +227,6 @@ final class ModelManager: ObservableObject {
 
 // MARK: - Catalog labels
 
-@MainActor
 func coreMLLabel(_ catalog: CoreMLLanguageModel.Catalog) -> String {
     switch catalog {
     case .lfm2_5_350M:       return "LFM2.5 350M (~810 MB, fastest)"
