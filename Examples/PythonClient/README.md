@@ -42,6 +42,18 @@ Listing models via openai SDK
   - apple-fm  (owned_by=pfm)
 ```
 
+## Tool calling (function calling)
+
+`openai_tools_demo.py` drives a two-turn function-calling interaction against `pfm-serve-apple`:
+
+```
+Round 1: assistant turn — tool_calls
+  Tool call: add({'a': 17, 'b': 25})  →  42
+Round 2: final answer — 42
+```
+
+The script passes a tool definition (`add(a, b)`) in the standard OpenAI `tools` shape, executes the tool locally when the model decides to call it, sends the result back as a `role: "tool"` message, and prints the model's final answer. All using the official SDK.
+
 ## What it proves
 
 - `client.chat.completions.create(...)` — full OpenAI shape, system + user roles, `max_tokens`, `temperature`.

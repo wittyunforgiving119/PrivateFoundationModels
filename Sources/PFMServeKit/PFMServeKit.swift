@@ -235,13 +235,14 @@ public final class PFMServer: @unchecked Sendable {
             // Chat-completions: render messages back into a single prompt
             // string. We surface the most recent user message as the
             // explicit `respond(to:)` argument and prepend any prior
-            // system messages as instructions.
+            // system messages as instructions. Tool-result messages
+            // (role:tool) become inline context.
             var instr = ""
             var latestUser = ""
             var priorTurns: [String] = []
             for msg in messages {
                 let role = (msg["role"] as? String) ?? "user"
-                let content = (msg["content"] as? String) ?? ""
+                let content = Self.flattenContent(msg["content"])
                 switch role {
                 case "system":
                     if !instr.isEmpty { instr += "\n\n" }
@@ -252,7 +253,27 @@ public final class PFMServer: @unchecked Sendable {
                     }
                     latestUser = content
                 case "assistant":
-                    priorTurns.append("Assistant: \(content)")
+                    // OpenAI assistant tool-call turns have role:assistant
+                    // with content=null and tool_calls[]. Render them so
+                    // the model sees the context.
+                    if let toolCalls = msg["tool_calls"] as? [[String: Any]] {
+                        var rendered: [String] = []
+                        for tc in toolCalls {
+                            let function = tc["function"] as? [String: Any]
+                            let name = (function?["name"] as? String) ?? "?"
+                            let args = (function?["arguments"] as? String) ?? "{}"
+                            rendered.append("Assistant called \(name)(\(args))")
+                        }
+                        priorTurns.append(rendered.joined(separator: "\n"))
+                    } else if !content.isEmpty {
+                        priorTurns.append("Assistant: \(content)")
+                    }
+                case "tool":
+                    let callID = (msg["tool_call_id"] as? String) ?? ""
+                    let label = callID.isEmpty
+                        ? "[tool result]"
+                        : "[tool result for \(callID)]"
+                    priorTurns.append("\(label): \(content)")
                 default:
                     priorTurns.append("\(role): \(content)")
                 }
@@ -386,6 +407,91 @@ public final class PFMServer: @unchecked Sendable {
         return candidate.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// OpenAI's `content` field on a message can be either a string or
+    /// an array of content parts (`[{"type":"text","text":...},
+    /// {"type":"image_url","image_url":{...}}]`). Collapse it to a
+    /// single string so PFM's text-only prompt rendering works. Image
+    /// parts are silently dropped today; vision-aware routing comes
+    /// in v0.8.1.
+    static func flattenContent(_ raw: Any?) -> String {
+        if let s = raw as? String { return s }
+        if let parts = raw as? [[String: Any]] {
+            var pieces: [String] = []
+            for part in parts {
+                let type = (part["type"] as? String) ?? ""
+                if type == "text", let text = part["text"] as? String {
+                    pieces.append(text)
+                }
+                // image_url / input_audio / etc. are dropped here. The
+                // multimodal lane (v0.8.1) will route them through
+                // `respond(to:image:)`.
+            }
+            return pieces.joined(separator: "\n")
+        }
+        return ""
+    }
+
+    /// Render an OpenAI `tools[]` array (each entry shaped as
+    /// `{type:"function", function:{name, description, parameters}}`)
+    /// into a system-prompt preamble that asks the model to emit
+    /// `{"tool_call":{"name":...,"arguments":{...}}}` when it wants
+    /// to call one.
+    static func openAIToolsAsPromptText(_ tools: [[String: Any]]) -> String {
+        var lines: [String] = [
+            "You have access to the following functions. To call one, respond with EXACTLY this JSON object and nothing else:",
+            "",
+            "  {\"tool_call\":{\"name\":\"<function_name>\",\"arguments\":<arguments_object>}}",
+            "",
+            "Available functions:",
+        ]
+        for tool in tools {
+            guard let function = tool["function"] as? [String: Any] else { continue }
+            let name = (function["name"] as? String) ?? "<unnamed>"
+            let desc = (function["description"] as? String) ?? ""
+            let params = function["parameters"] as? [String: Any]
+            let paramsJSON: String
+            if let params,
+               let data = try? JSONSerialization.data(withJSONObject: params, options: [.sortedKeys]),
+               let s = String(data: data, encoding: .utf8) {
+                paramsJSON = s
+            } else {
+                paramsJSON = "{}"
+            }
+            lines.append("- \(name): \(desc)")
+            lines.append("  parameters: \(paramsJSON)")
+        }
+        lines.append("")
+        lines.append("Otherwise, answer the user's question normally without emitting a tool_call object.")
+        return lines.joined(separator: "\n")
+    }
+
+    /// Try to extract `{"tool_call":{"name":...,"arguments":...}}` from
+    /// the model's reply. Returns the call's name and the arguments
+    /// payload as a JSON string (matching OpenAI's expected
+    /// `function.arguments` shape, which is a string).
+    static func parseToolCall(in raw: String) -> (name: String, arguments: String)? {
+        let dethought = JSONExtraction.stripThinkBlocks(raw)
+        let fenced = JSONExtraction.stripCodeFence(dethought)
+        let extracted = JSONExtraction.extractObject(fenced) ?? fenced
+        guard
+            let data = extracted.data(using: .utf8),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let tc = json["tool_call"] as? [String: Any],
+            let name = tc["name"] as? String
+        else { return nil }
+        let argsAny: Any = tc["arguments"] ?? [String: Any]()
+        let argsJSON: String
+        if let s = argsAny as? String {
+            argsJSON = s
+        } else if let data = try? JSONSerialization.data(withJSONObject: argsAny, options: [.sortedKeys]),
+                  let s = String(data: data, encoding: .utf8) {
+            argsJSON = s
+        } else {
+            argsJSON = "{}"
+        }
+        return (name, argsJSON)
+    }
+
     /// `true` when the OpenAI client requested
     /// `response_format: {"type": "json_object"}` (or `"json_schema"`).
     private func isJSONMode(_ json: [String: Any]) -> Bool {
@@ -434,20 +540,28 @@ public final class PFMServer: @unchecked Sendable {
         let session: LanguageModelSession
         let baseInstructions = instructions
         let jsonMode = isJSONMode(json)
-        if jsonMode {
-            // OpenAI JSON mode: force the model to emit a single
-            // JSON object. We append the requirement to the system
-            // instructions (or build them fresh) so the prompt itself
-            // stays clean.
+        let toolsJSON = (json["tools"] as? [[String: Any]]) ?? []
+        let hasTools = !toolsJSON.isEmpty
+        var resolvedInstructions = baseInstructions
+        if hasTools {
+            // OpenAI function-calling: render the tool catalog into
+            // the system prompt. The model emits a single JSON object
+            // `{"tool_call":{"name":...,"arguments":{...}}}` to call;
+            // we parse that and return it as OpenAI tool_calls.
+            let preamble = Self.openAIToolsAsPromptText(toolsJSON)
+            resolvedInstructions = resolvedInstructions.isEmpty
+                ? preamble
+                : "\(resolvedInstructions)\n\n\(preamble)"
+        } else if jsonMode {
             let strictness = "Respond with exactly one valid JSON object. No prose, no markdown code fences, no leading or trailing text."
-            let combined = baseInstructions.isEmpty
+            resolvedInstructions = resolvedInstructions.isEmpty
                 ? strictness
-                : "\(baseInstructions)\n\n\(strictness)"
-            session = LanguageModelSession(instructions: Instructions(combined))
-        } else if baseInstructions.isEmpty {
+                : "\(resolvedInstructions)\n\n\(strictness)"
+        }
+        if resolvedInstructions.isEmpty {
             session = LanguageModelSession()
         } else {
-            session = LanguageModelSession(instructions: Instructions(baseInstructions))
+            session = LanguageModelSession(instructions: Instructions(resolvedInstructions))
         }
         let temperature = (json["temperature"] as? Double)
         let maxTokens = (json["max_tokens"] as? Int) ?? (json["max_completion_tokens"] as? Int)
@@ -457,10 +571,42 @@ public final class PFMServer: @unchecked Sendable {
         )
         do {
             let response = try await session.respond(to: prompt, options: options)
-            // When the caller asked for JSON mode and the model wrapped
-            // its reply in ```json … ``` (Apple's on-device LLM does
-            // this fairly often), unwrap to the bare JSON object so
-            // consumers can JSON.parse() the content directly.
+            // Tool-call detection runs first — when the caller passed
+            // `tools` and the model emitted a `{"tool_call":...}`
+            // object, return that as OpenAI tool_calls and finish.
+            if hasTools, let call = Self.parseToolCall(in: response.content) {
+                let callID = "call_\(UUID().uuidString.prefix(24).replacingOccurrences(of: "-", with: ""))"
+                let payload: [String: Any] = [
+                    "id": "chatcmpl-\(UUID().uuidString)",
+                    "object": "chat.completion",
+                    "created": Int(Date().timeIntervalSince1970),
+                    "model": modelLabel,
+                    "choices": [[
+                        "index": 0,
+                        "message": [
+                            "role": "assistant",
+                            "content": NSNull(),
+                            "tool_calls": [[
+                                "id": callID,
+                                "type": "function",
+                                "function": [
+                                    "name": call.name,
+                                    "arguments": call.arguments,
+                                ],
+                            ]],
+                        ],
+                        "finish_reason": "tool_calls",
+                    ]],
+                    "usage": [
+                        "prompt_tokens": NSNull(),
+                        "completion_tokens": NSNull(),
+                        "total_tokens": NSNull(),
+                    ],
+                ]
+                return HTTPResponse.json(200, payload)
+            }
+
+            // Plain (or JSON-mode) text reply.
             let content: String
             if jsonMode {
                 content = Self.extractJSONContent(response.content)
