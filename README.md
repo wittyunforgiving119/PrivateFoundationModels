@@ -8,7 +8,15 @@
 **One call site. Three backends. On iOS 26 it runs Apple's native FoundationModels; on iOS 18 it runs your CoreML or MLX model.**
 
 <p align="center">
-  <img src="docs/media/pfm.gif" alt="PFMSwitcher demo: same LanguageModelSession code switching between Apple FoundationModels and LFM2.5-350M on the Neural Engine" width="320">
+  <a href="docs/RUNTIME_COMPARISON.md">
+    <img src="docs/media/runtime-comparison-m4max.png" alt="Same Qwen3.5-0.8B on M4 Max: MLX/GPU 4-bit is 12× TTFT and 5× throughput vs CoreML/ANE FP16." width="800">
+  </a>
+</p>
+
+<p align="center">
+  <em>Same model, same prompt, same call site — different runtime. M4 Max. <a href="docs/RUNTIME_COMPARISON.md">Full numbers + caveats.</a></em>
+  <br>
+  <a href="Examples/PFMSwitcher/"><img src="docs/media/pfm.gif" alt="PFMSwitcher demo: live backend switch in the sample iOS app" width="240" align="right"></a>
 </p>
 
 ```swift
