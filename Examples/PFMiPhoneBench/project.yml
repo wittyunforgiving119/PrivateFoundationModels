@@ -1,0 +1,58 @@
+name: PFMiPhoneBench
+options:
+  bundleIdPrefix: dev.pebble
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "18.0"
+  groupSortPosition: top
+settings:
+  base:
+    DEVELOPMENT_LANGUAGE: en
+    SWIFT_VERSION: "6.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+packages:
+  PrivateFoundationModels:
+    path: ../..
+targets:
+  PFMiPhoneBench:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: PFMiPhoneBench
+    dependencies:
+      - package: PrivateFoundationModels
+        product: PrivateFoundationModels
+      - package: PrivateFoundationModels
+        product: PrivateFoundationModelsCoreML
+      - package: PrivateFoundationModels
+        product: PrivateFoundationModelsMLX
+      - package: PrivateFoundationModels
+        product: PrivateFoundationModelsApple
+    info:
+      path: PFMiPhoneBench/Info.plist
+      properties:
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: "Default Configuration"
+                UISceneDelegateClassName: ""
+        UIRequiredDeviceCapabilities:
+          - arm64
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIBackgroundModes:
+          - processing
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.pebble.PFMiPhoneBench
+        MARKETING_VERSION: "0.10.4"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_EMIT_LOC_STRINGS: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        ENABLE_PREVIEWS: YES
