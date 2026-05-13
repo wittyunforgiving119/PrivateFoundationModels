@@ -56,3 +56,7 @@ Same dry-run-without-creds pattern as `post-x.py`.
 ## What it would take to push further
 
 A `@playwright/mcp` server wired into Claude Code would let the next session drive every form fill + click end-to-end (X, HN, Reddit, Apple Forums) from one prompt. Until then this is the bound.
+
+## Step-by-step credential setup
+
+For the API-based scripts, see **[`bin/CREDS_SETUP.md`](CREDS_SETUP.md)** — a ~10-minute walk-through that takes you from "no API access" to `./bin/post-x.py && ./bin/post-reddit.py` posting your launch in one command.
