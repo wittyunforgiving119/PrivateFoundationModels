@@ -16,7 +16,13 @@ func readArg(after flag: String) -> String? {
 }
 
 func run() async {
+    // `--local <path>` overrides `--model` and loads from a local
+    // directory directly (skips HuggingFace fetch). Useful for
+    // benching pre-built bundles (e.g. own staging dirs) or when
+    // the HF repo for the model is too large to redownload.
+    let localPath = readArg(after: "--local")
     let modelID = readArg(after: "--model") ?? "lfm2.5-350m"
+    let displayID = localPath.map { "local://\(URL(fileURLWithPath: $0).lastPathComponent)" } ?? modelID
     let catalog: CoreMLLanguageModel.Catalog
     switch modelID.lowercased() {
     case "lfm2.5-350m": catalog = .lfm2_5_350M
@@ -30,7 +36,14 @@ func run() async {
     let start = ContinuousClock.now
     let backend: any LanguageModelBackend
     do {
-        backend = try await CoreMLLanguageModel.load(catalog) { @Sendable _ in }
+        if let localPath {
+            backend = try await CoreMLLanguageModel.load(
+                localBundle: URL(fileURLWithPath: localPath),
+                identifier: "coreml-local://\(URL(fileURLWithPath: localPath).lastPathComponent)"
+            ) { @Sendable _ in }
+        } else {
+            backend = try await CoreMLLanguageModel.load(catalog) { @Sendable _ in }
+        }
     } catch {
         FileHandle.standardError.write(Data("Load failed: \(error)\n".utf8))
         exit(2)
@@ -40,14 +53,21 @@ func run() async {
     let (s, atto) = load.components
     let loadMs = (Double(s) + Double(atto) / 1e18) * 1000
 
+    let tokenCounter: (String) async -> Int? = { @Sendable text in
+        await backend.tokenCount(text)
+    }
     if CommandLine.arguments.contains("--multilang") {
         let rows = await Bench.runAllLanguages(
-            backendLabel: "CoreML / ANE (\(modelID))", loadMs: loadMs
+            backendLabel: "CoreML / ANE (\(displayID))", loadMs: loadMs,
+            tokenCounter: tokenCounter
         )
         emitBenchOutput(rows)
         return
     }
-    let row = await Bench.runAll(label: "CoreML / ANE (\(modelID))", loadMs: loadMs)
+    let row = await Bench.runAll(
+        label: "CoreML / ANE (\(displayID))", loadMs: loadMs,
+        tokenCounter: tokenCounter
+    )
     emitBenchOutput([row])
 }
 

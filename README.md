@@ -7,13 +7,23 @@
 
 **One Swift call site. Three on-device runtimes. The same `LanguageModelSession.respond(...)` reaches Apple Intelligence on iOS 26, CoreML on iOS 18, or any `mlx-community/*` model on the GPU — your code never changes.**
 
-<p align="center">
-  <a href="docs/RUNTIME_COMPARISON.md">
-    <img src="docs/media/gemma4-runtime-iphone.png" alt="Gemma 4 E2B on iPhone Air, CoreML/ANE FP16 vs MLX/GPU 4-bit, real tokenizer counts. TTFT: MLX 84 ms vs CoreML 661 ms (8× faster). Decode: MLX 45.2 tok/sec vs CoreML 34.6 tok/sec (1.31× faster)." width="820">
-  </a>
-</p>
+### Same prompt, same call site, two runtimes — Gemma 4 E2B
 
-<p align="center"><em>Gemma 4 E2B on iPhone Air — same prompt, same call site, two runtimes. Real tokens (counted via each backend's tokenizer, not chars/4). MLX wins TTFT by 8×, decode by 1.31×. <a href="docs/RUNTIME_COMPARISON.md">Methodology, Qwen3.5 comparison, and why the decode gap depends on architecture.</a></em></p>
+Real token counts via each backend's own tokenizer (no chars/4 approximation). Median of 3 timed iterations after one warmup. Same `Write a single-sentence Swift fact in under 30 words.` prompt, `temperature: 0.0`, `maximumResponseTokens: 80`.
+
+| Hardware | Runtime | Quant | TTFT | Decode tok/sec | tok/sec gap |
+|---|---|---|---:|---:|---:|
+| Apple M4 Max (macOS 26.0) | CoreML / ANE | FP16-ish | 246 ms | **32.8** | — |
+| Apple M4 Max (macOS 26.0) | MLX / GPU    | 4-bit    | **29 ms** | **172.8** | **5.3×** MLX |
+| iPhone Air `iPhone18,1` (iOS 26.4.2) | CoreML / ANE | FP16-ish | 661 ms | **34.6** | — |
+| iPhone Air `iPhone18,1` (iOS 26.4.2) | MLX / GPU    | 4-bit    | **84 ms** | **45.2** | **1.31×** MLX |
+
+Two observations the chart kept hiding:
+
+- **CoreML decode rate is hardware-flat.** Mac M4 Max ANE (32.8 tok/s) and iPhone Air ANE (34.6 tok/s) decode Gemma 4 E2B at essentially the same speed. The Neural Engine is bandwidth-bound on this workload, not compute-bound — and the bandwidth budget is similar on both chips.
+- **MLX scales with the GPU.** Mac 4-bit GPU (172.8 tok/s) is 3.8× faster than iPhone 4-bit GPU (45.2 tok/s). The MLX-vs-CoreML decode gap therefore widens from 1.31× on iPhone to 5.3× on M4 Max — same model, same prompt, just more GPU.
+
+[Methodology, Qwen3.5 numbers, sideload instructions →](docs/RUNTIME_COMPARISON.md)
 
 ## 30-second value prop
 

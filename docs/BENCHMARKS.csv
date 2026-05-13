@@ -9,3 +9,5 @@ timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,output_tokens,c
 2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2",MLX / GPU (Qwen3.5-0.8B-MLX-4bit),86980,80,231,89,,384.9,589.4,,
 2026-05-13T17:10:44Z,"iPhone18,1 / iOS 26.4.2","CoreML / ANE (Gemma-4-E2B, sideload)",32661,661,1095,87,15,79.5,200.7,13.7,34.6
 2026-05-13T17:10:44Z,"iPhone18,1 / iOS 26.4.2",MLX / GPU (Gemma-4-E2B-4bit),2279,84,349,69,12,197.6,260.1,34.4,45.2
+2026-05-13T21:13:22Z,"Apple M4 Max","MLX / GPU (gemma-4-e2b-it-4bit)",1541,29,99,69,12,698.5,993.7,121.5,172.8
+2026-05-13T21:36:47Z,"Apple M4 Max","CoreML / ANE (local://gemma4-e2b)",83594,246,703,87,15,123.7,190.1,21.3,32.8

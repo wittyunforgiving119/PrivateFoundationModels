@@ -63,14 +63,16 @@ public extension Bench {
     static func runAllLanguages(
         backendLabel: String,
         loadMs: Double,
-        languages: [BenchLanguage] = BenchLanguage.allCases
+        languages: [BenchLanguage] = BenchLanguage.allCases,
+        tokenCounter: ((String) async -> Int?)? = nil
     ) async -> [BenchRow] {
         var rows: [BenchRow] = []
         for lang in languages {
             let row = await runOne(
                 label: "\(backendLabel) — \(lang.label)",
                 loadMs: loadMs,
-                prompt: lang.prompt
+                prompt: lang.prompt,
+                tokenCounter: tokenCounter
             )
             rows.append(row)
         }
@@ -81,27 +83,33 @@ public extension Bench {
     static func runOne(
         label: String,
         loadMs: Double,
-        prompt: String
+        prompt: String,
+        tokenCounter: ((String) async -> Int?)? = nil
     ) async -> BenchRow {
         var ttfts: [Double] = []
         var totals: [Double] = []
         var chars: [Int] = []
+        var tokens: [Int] = []
         _ = try? await runOnce(timed: false, prompt: prompt)
         for _ in 0..<BenchOptions.iterations {
             if let r = try? await runOnce(timed: true, prompt: prompt) {
                 ttfts.append(r.ttft)
                 totals.append(r.total)
                 chars.append(r.chars)
+                if let counter = tokenCounter, let t = await counter(r.text) {
+                    tokens.append(t)
+                }
             }
         }
         return BenchRow(
             label: label, loadMs: loadMs,
-            ttftMs: ttfts, totalMs: totals, outputChars: chars
+            ttftMs: ttfts, totalMs: totals, outputChars: chars,
+            outputTokens: tokens.count == chars.count ? tokens : []
         )
     }
 
     private static func runOnce(timed: Bool, prompt: String) async throws
-        -> (ttft: Double, total: Double, chars: Int)
+        -> (ttft: Double, total: Double, chars: Int, text: String)
     {
         let session = LanguageModelSession(instructions: Instructions("Be brief."))
         let options = GenerationOptions(
@@ -122,7 +130,7 @@ public extension Bench {
         let end = ContinuousClock.now
         let totalMs = millisRange(start, end)
         let ttftMs = firstAt.map { millisRange(start, $0) } ?? totalMs
-        return (ttftMs, totalMs, lastText.count)
+        return (ttftMs, totalMs, lastText.count, lastText)
     }
 
     private static func millisRange(
@@ -141,6 +149,10 @@ public struct BenchRow {
     public var ttftMs: [Double]   // time-to-first-token per iteration
     public var totalMs: [Double]  // streamResponse wall time per iteration
     public var outputChars: [Int]
+    /// Real token counts from the backend's own tokenizer, one per
+    /// iteration. Empty when the backend can't expose its tokenizer
+    /// (Apple FM). Aligned with `outputChars` when present.
+    public var outputTokens: [Int] = []
 }
 
 extension BenchRow {
@@ -211,16 +223,38 @@ extension BenchRow {
         // hardware tag are the only realistic offenders.
         let quotedLabel = "\"\(label.replacingOccurrences(of: "\"", with: "\"\""))\""
         let quotedHW = "\"\(hardware.replacingOccurrences(of: "\"", with: "\"\""))\""
+        let tokCell = medianTokens.map { String($0) } ?? ""
+        let tpsE2ECell = medianE2ETokensPerSec.map { String(format: "%.1f", $0) } ?? ""
+        let tpsDecodeCell = medianDecodeTokensPerSec.map { String(format: "%.1f", $0) } ?? ""
         return String(
-            format: "%@,%@,%@,%.0f,%.0f,%.0f,%.0f,%.1f,%.1f",
+            format: "%@,%@,%@,%.0f,%.0f,%.0f,%.0f,%@,%.1f,%.1f,%@,%@",
             timestamp, quotedHW, quotedLabel,
             loadMs, medTTFT, medTotal, medChars,
-            medianCharsPerSec, medianDecodeCharsPerSec
+            tokCell, medianCharsPerSec, medianDecodeCharsPerSec,
+            tpsE2ECell, tpsDecodeCell
         )
     }
 
     public static let csvHeader =
-        "timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec,decode_chars_per_sec"
+        "timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,output_tokens,chars_per_sec,decode_chars_per_sec,tok_per_sec_e2e,tok_per_sec_decode"
+
+    public var medianTokens: Int? {
+        guard outputTokens.count == outputChars.count, !outputTokens.isEmpty
+        else { return nil }
+        return median(outputTokens)
+    }
+
+    public var medianDecodeTokensPerSec: Double? {
+        guard let toks = medianTokens else { return nil }
+        let decodeMs = median(totalMs) - median(ttftMs)
+        return decodeMs > 0 ? Double(toks) / (decodeMs / 1000.0) : 0
+    }
+
+    public var medianE2ETokensPerSec: Double? {
+        guard let toks = medianTokens else { return nil }
+        let total = median(totalMs)
+        return total > 0 ? Double(toks) / (total / 1000.0) : 0
+    }
 }
 
 /// Convenience for stamping CSV rows.
@@ -329,11 +363,18 @@ public enum Bench {
     /// Run `BenchOptions.iterations` warm streaming `respond` calls
     /// against the currently-installed backend. Caller supplies the
     /// label and load time (loading is backend-specific so it stays
-    /// outside this kit).
-    public static func runAll(label: String, loadMs: Double) async -> BenchRow {
+    /// outside this kit). Pass `tokenCounter` to capture real token
+    /// counts (typically `backend.tokenCount(_:)`); pass `nil` to
+    /// fall back to char-only metrics.
+    public static func runAll(
+        label: String,
+        loadMs: Double,
+        tokenCounter: ((String) async -> Int?)? = nil
+    ) async -> BenchRow {
         var ttfts: [Double] = []
         var totals: [Double] = []
         var chars: [Int] = []
+        var tokens: [Int] = []
 
         // Warmup: one untimed pass so caches / KV state settle.
         _ = try? await runOnce(timed: false)
@@ -343,17 +384,21 @@ public enum Bench {
                 ttfts.append(r.ttft)
                 totals.append(r.total)
                 chars.append(r.chars)
+                if let counter = tokenCounter, let t = await counter(r.text) {
+                    tokens.append(t)
+                }
             }
         }
 
         return BenchRow(
             label: label, loadMs: loadMs,
-            ttftMs: ttfts, totalMs: totals, outputChars: chars
+            ttftMs: ttfts, totalMs: totals, outputChars: chars,
+            outputTokens: tokens.count == chars.count ? tokens : []
         )
     }
 
     private static func runOnce(timed: Bool) async throws
-        -> (ttft: Double, total: Double, chars: Int)
+        -> (ttft: Double, total: Double, chars: Int, text: String)
     {
         let session = LanguageModelSession(instructions: Instructions("Be brief."))
         let options = GenerationOptions(
@@ -376,7 +421,7 @@ public enum Bench {
 
         let totalMs = millis(start...end)
         let ttftMs = firstAt.map { millis(start...$0) } ?? totalMs
-        return (ttftMs, totalMs, lastText.count)
+        return (ttftMs, totalMs, lastText.count, lastText)
     }
 
     private static func millis(_ range: ClosedRange<ContinuousClock.Instant>) -> Double {

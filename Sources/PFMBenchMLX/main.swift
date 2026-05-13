@@ -34,14 +34,21 @@ func run() async {
     let loadMs = (Double(s) + Double(atto) / 1e18) * 1000
 
     let backendLabel = "MLX / GPU (\(modelID.split(separator: "/").last ?? Substring(modelID)))"
+    let tokenCounter: (String) async -> Int? = { @Sendable text in
+        await backend.tokenCount(text)
+    }
     if CommandLine.arguments.contains("--multilang") {
         let rows = await Bench.runAllLanguages(
-            backendLabel: backendLabel, loadMs: loadMs
+            backendLabel: backendLabel, loadMs: loadMs,
+            tokenCounter: tokenCounter
         )
         emitBenchOutput(rows)
         return
     }
-    let row = await Bench.runAll(label: backendLabel, loadMs: loadMs)
+    let row = await Bench.runAll(
+        label: backendLabel, loadMs: loadMs,
+        tokenCounter: tokenCounter
+    )
     emitBenchOutput([row])
 }
 
