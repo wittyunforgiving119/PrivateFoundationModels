@@ -43,27 +43,42 @@ PFM's bench tracks two throughput numbers:
 
 ## The runtime gap is architecture-dependent
 
-![Gemma 4 vs Qwen3.5 on iPhone Air, CoreML vs MLX](media/gemma4-runtime-iphone.png)
+![Gemma 4 E2B on iPhone Air, real token counts](media/gemma4-runtime-iphone.png)
 
-Running Gemma 4 E2B (2 B effective via matformer + per-layer embeddings) head-to-head with Qwen3.5-0.8B on the same iPhone, same harness:
+Running Gemma 4 E2B (2 B effective via matformer + per-layer embeddings) head-to-head on the same iPhone, with the v0.10.8 bench harness that asks each backend's own tokenizer for the actual token count — no `chars/4` shortcut:
 
-| Model | Backend | Quant | Load | TTFT | Decode chars/sec | ≈ tok/sec |
-|---|---|---|---|---|---|---|
-| Qwen3.5-0.8B    | CoreML / ANE | FP16-ish | 28 s   | 584 ms | 196 | 49 |
-| Qwen3.5-0.8B    | MLX / GPU    | 4-bit    | 1.3 s  | 88 ms  | **568** | **142** |
-| Gemma-4-E2B     | CoreML / ANE | FP16-ish | 39 s ¹ | 673 ms | **199** | **50** |
-| Gemma-4-E2B     | MLX / GPU    | 4-bit    | 464 s² | 85 ms  | 261 | 65 |
+| Model | Backend | Quant | Load | TTFT | Output tokens | Decode chars/sec | **Decode tok/sec** |
+|---|---|---|---|---|---|---|---|
+| Gemma-4-E2B | CoreML / ANE | FP16-ish | 33 s ¹ | 661 ms | 15 | 201 | **34.6** |
+| Gemma-4-E2B | MLX / GPU    | 4-bit    | 2.3 s ² | 84 ms | 12 | 260 | **45.2** |
 
-¹ Sideloaded — pushed via `xcrun devicectl device copy to` from the Mac. No HF download. 4.8 GB on-disk (text-only subset: chunk + prefill_chunk + per-layer embed weights + tokenizer).
-² First-run HuggingFace download over Wi-Fi. Cold load number — bench again after warm cache for steady-state.
+¹ Sideloaded — pushed via `xcrun devicectl device copy to` from the Mac. No HF download. 4.8 GB on-disk (text-only subset: chunk + prefill_chunk + per-layer embed weights + tokenizer). Subsequent loads from disk; first-run number when nothing was cached was ~39 s.
+² Cached on iPhone after first-run HF download (~464 s). The 2.3 s here is the warm-disk load.
 
-**Two stories.** On Qwen3.5 the MLX vs CoreML decode gap is 2.9× — runtime matters a lot. On Gemma 4 it collapses to **1.3×**. Same iPhone, same prompt; only the model architecture changes. Possible explanations:
+For comparison, the same harness on Qwen3.5-0.8B (numbers from v0.10.6 — still chars-only, will get tokenized rows in a later contribution):
 
-- Gemma 4 E2B is a matformer architecture with a 2.2 GB per-layer-embedding table that ANE handles efficiently in its weight-streaming pipeline. MLX has to keep more of that resident on the GPU's shared memory budget.
-- MLX 4-bit quantization wins ~3× on simple transformer decode (Qwen) but the matformer's per-layer block hides the GPU's quant advantage — most of the time is in the embedding fetch, not the matmul.
-- Whichever way the cause shakes out, the takeaway: "CoreML is slow" is wrong as a sweeping statement. CoreML is slow on naive transformer decode (Qwen-shaped) and competitive on architectures designed for on-device hardware (Gemma 4-shaped). Pick the runtime to match the architecture, not as a blanket choice.
+| Model | Backend | Decode chars/sec |
+|---|---|---|
+| Qwen3.5-0.8B | CoreML / ANE | 202 |
+| Qwen3.5-0.8B | MLX / GPU 4-bit | 589 |
 
-CoreML's ~50 tok/sec is identical between the two models despite Gemma 4 being 2.5× the effective parameter count. Useful corollary: when ANE is the bottleneck (not the model), you can run a bigger model for free.
+### Methodology note (and a correction)
+
+An earlier revision of this page quoted Gemma 4 E2B as **50 tok/sec** on CoreML, citing `199 chars/sec ÷ 4 chars per token` as a sanity check. That was wrong. The Gemma 4 SentencePiece tokenizer on technical English (Swift terminology in this bench's prompt) packs ~**5.8 chars/token**, not 4. The real numbers are:
+
+- **CoreML / ANE: 34.6 tok/sec** (decode, median of 3) — matches independent hand-measured CoreML-LLM numbers
+- **MLX / GPU 4-bit: 45.2 tok/sec** (decode, median of 3)
+- MLX vs CoreML decode gap: **1.31×** on Gemma 4 (vs the 2.9× MLX wins on Qwen3.5).
+
+The decode-ratio story didn't change — MLX still wins by a hair on Gemma — but the absolute numbers are smaller than the chars-based estimate suggested. PFM v0.10.8 onwards counts tokens directly via `backend.tokenCount(_:)` on each backend's actual tokenizer, so this won't drift again.
+
+### What the gap tells us
+
+Gemma 4 E2B is a matformer architecture with a 2.2 GB per-layer-embedding table. The MLX 4-bit quant advantage that's worth ~3× on a Qwen-shaped transformer (Qwen decode 196 chars/sec CoreML vs 589 MLX, ≈ 3× ratio) collapses to **1.31×** on Gemma 4. Possible reasons:
+
+- ANE handles the per-layer-embedding fetch efficiently in its weight-streaming pipeline; MLX has to keep that resident on the GPU's shared memory budget.
+- The matformer's per-layer block dominates wall time, so the GPU's matmul-quant advantage on the transformer weights is hidden behind embed-table latency.
+- Whichever way the cause shakes out, the takeaway: "CoreML is slow" is wrong as a blanket statement. CoreML is slow on naive transformer decode (Qwen-shaped) and competitive on architectures designed for on-device hardware (Gemma 4-shaped). Pick the runtime to match the architecture.
 
 ### Reproducing the Gemma 4 row
 

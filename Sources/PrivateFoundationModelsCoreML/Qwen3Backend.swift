@@ -42,6 +42,10 @@ public final class Qwen3Backend: LanguageModelBackend, @unchecked Sendable {
         // Qwen35MLKVGenerator.load() already runs a warm-up step.
     }
 
+    public func tokenCount(_ text: String) async -> Int? {
+        tokenizer.encode(text: text).count
+    }
+
     // MARK: - generate
 
     public func generate(

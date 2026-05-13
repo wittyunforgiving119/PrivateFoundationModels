@@ -264,6 +264,10 @@ public final class CoreMLBackendImpl: LanguageModelBackend, @unchecked Sendable 
         }
     }
 
+    public func tokenCount(_ text: String) async -> Int? {
+        underlying.tokenizerRef.encode(text: text).count
+    }
+
     public func generate(
         transcript: Transcript,
         options: GenerationOptions,

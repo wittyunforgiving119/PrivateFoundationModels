@@ -35,6 +35,12 @@ public final class MLXBackend: LanguageModelBackend, @unchecked Sendable {
         // forward pass to spin up Metal pipelines.
     }
 
+    public func tokenCount(_ text: String) async -> Int? {
+        await underlying.perform { _, tokenizer in
+            tokenizer.encode(text: text).count
+        }
+    }
+
     // MARK: - Non-streaming
 
     public func generate(

@@ -75,6 +75,14 @@ public protocol LanguageModelBackend: Sendable {
         schema: GenerationSchema?,
         tools: [AnyTool]
     ) -> AsyncThrowingStream<BackendDelta, Error>
+
+    /// Number of tokens the backend's tokenizer would assign to `text`.
+    /// Returns `nil` when the backend can't expose its tokenizer (Apple's
+    /// system model on iOS 26, for example, hides it behind the framework).
+    /// Used by `PFMBenchKit` / `PFMiPhoneBench` to compute honest
+    /// tokens-per-second instead of char-per-second-divided-by-4
+    /// approximations.
+    func tokenCount(_ text: String) async -> Int?
 }
 
 extension LanguageModelBackend {
@@ -99,6 +107,8 @@ extension LanguageModelBackend {
     ) -> AsyncThrowingStream<BackendDelta, Error> {
         streamGenerate(transcript: transcript, options: options, schema: schema, tools: tools)
     }
+
+    public func tokenCount(_ text: String) async -> Int? { nil }
 }
 
 /// Result of a non-streaming `generate` call.

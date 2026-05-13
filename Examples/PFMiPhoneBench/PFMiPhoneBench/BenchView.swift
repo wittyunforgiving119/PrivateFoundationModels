@@ -28,6 +28,10 @@ final class BenchRunner: ObservableObject {
         let ttftMs: Double
         let totalMs: Double
         let chars: Int
+        /// Actual token count of the median output, as reported by the
+        /// backend's own tokenizer. `nil` when the backend hides its
+        /// tokenizer (Apple FM on iOS 26).
+        let tokens: Int?
         // End-to-end chars/sec — includes prefill.
         var charsPerSec: Double {
             totalMs > 0 ? Double(chars) / (totalMs / 1000.0) : 0
@@ -38,6 +42,17 @@ final class BenchRunner: ObservableObject {
         var decodeCharsPerSec: Double {
             let decodeMs = totalMs - ttftMs
             return decodeMs > 0 ? Double(chars) / (decodeMs / 1000.0) : 0
+        }
+        /// Real tok/sec for the decode phase. `nil` when token count
+        /// is unavailable. Honest replacement for "chars/sec ÷ 4".
+        var decodeTokensPerSec: Double? {
+            guard let tokens else { return nil }
+            let decodeMs = totalMs - ttftMs
+            return decodeMs > 0 ? Double(tokens) / (decodeMs / 1000.0) : 0
+        }
+        var e2eTokensPerSec: Double? {
+            guard let tokens else { return nil }
+            return totalMs > 0 ? Double(tokens) / (totalMs / 1000.0) : 0
         }
     }
 
@@ -171,10 +186,15 @@ final class BenchRunner: ObservableObject {
     func runAll() async {
         status = .running(stage: "Starting…")
         log = ""
-        csv = "timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec,decode_chars_per_sec\n"
+        csv = "timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,output_tokens,chars_per_sec,decode_chars_per_sec,tok_per_sec_e2e,tok_per_sec_decode\n"
         rows = []
         let hw = deviceLabel()
         let timestamp = ISO8601DateFormatter().string(from: Date())
+
+        // Persist the fresh header immediately so external monitors can
+        // distinguish "this run hasn't written anything yet" from
+        // "leftover file from a previous run".
+        persistCSV()
 
         for plan in plans {
             guard plan.isAvailable() else {
@@ -201,31 +221,57 @@ final class BenchRunner: ObservableObject {
             var ttfts: [Double] = []
             var totals: [Double] = []
             var chars: [Int] = []
+            var tokenCounts: [Int] = []
             for i in 1...iterations {
                 status = .running(stage: "\(plan.label) iter \(i)/\(iterations)")
                 if let r = try? await runOne(timed: true) {
                     ttfts.append(r.ttft)
                     totals.append(r.total)
                     chars.append(r.chars)
-                    appendLog(String(format: "  iter %d: ttft %.0f ms, total %.0f ms, %d chars", i, r.ttft, r.total, r.chars))
+                    // Ask the backend's own tokenizer to count this output.
+                    // Nil → no tokenizer exposed (Apple FM). Fall back to
+                    // the chars/4 estimate so the column isn't empty.
+                    if let t = await backend.tokenCount(r.text) {
+                        tokenCounts.append(t)
+                    }
+                    appendLog(String(format: "  iter %d: ttft %.0f ms, total %.0f ms, %d chars%@",
+                                      i, r.ttft, r.total, r.chars,
+                                      tokenCounts.last.map { ", \($0) tok" } ?? ""))
                 }
             }
             let medTTFT = median(ttfts)
             let medTotal = median(totals)
             let medChars = Double(median(chars))
+            let medTokens: Int? = tokenCounts.count == chars.count ? median(tokenCounts) : nil
             let cps = medTotal > 0 ? medChars / (medTotal / 1000.0) : 0
             let decodeMs = medTotal - medTTFT
             let decodeCps = decodeMs > 0 ? medChars / (decodeMs / 1000.0) : 0
+            let tpsE2E = medTokens.map { medTotal > 0 ? Double($0) / (medTotal / 1000.0) : 0 }
+            let tpsDecode = medTokens.map { decodeMs > 0 ? Double($0) / (decodeMs / 1000.0) : 0 }
             let row = Row(backend: plan.label, loadMs: loadMs,
-                           ttftMs: medTTFT, totalMs: medTotal, chars: Int(medChars))
+                           ttftMs: medTTFT, totalMs: medTotal,
+                           chars: Int(medChars), tokens: medTokens)
             rows.append(row)
             let escaped = plan.label.replacingOccurrences(of: "\"", with: "\"\"")
             let hwEscaped = hw.replacingOccurrences(of: "\"", with: "\"\"")
-            let csvRow = String(format: "%@,\"%@\",\"%@\",%.0f,%.0f,%.0f,%.0f,%.1f,%.1f\n",
-                                 timestamp, hwEscaped, escaped, loadMs, medTTFT, medTotal, medChars, cps, decodeCps)
+            let tokensCell = medTokens.map { String($0) } ?? ""
+            let tpsE2ECell = tpsE2E.map { String(format: "%.1f", $0) } ?? ""
+            let tpsDecodeCell = tpsDecode.map { String(format: "%.1f", $0) } ?? ""
+            let csvRow = String(
+                format: "%@,\"%@\",\"%@\",%.0f,%.0f,%.0f,%.0f,%@,%.1f,%.1f,%@,%@\n",
+                timestamp, hwEscaped, escaped,
+                loadMs, medTTFT, medTotal, medChars,
+                tokensCell, cps, decodeCps,
+                tpsE2ECell, tpsDecodeCell
+            )
             csv += csvRow
-            appendLog(String(format: "  → median: ttft %.0f ms, %.1f cps E2E (%.1f cps decode-only)",
-                              medTTFT, cps, decodeCps))
+            if let dec = tpsDecode {
+                appendLog(String(format: "  → median: ttft %.0f ms, %.1f tok/s decode (%.1f cps)",
+                                  medTTFT, dec, decodeCps))
+            } else {
+                appendLog(String(format: "  → median: ttft %.0f ms, %.1f cps decode (tokenizer N/A)",
+                                  medTTFT, decodeCps))
+            }
 
             // Incremental save: persist what we have after every
             // backend so a later crash / hang / kill doesn't lose
@@ -249,7 +295,7 @@ final class BenchRunner: ObservableObject {
         try? csv.data(using: .utf8)?.write(to: url, options: .atomic)
     }
 
-    private func runOne(timed: Bool) async throws -> (ttft: Double, total: Double, chars: Int) {
+    private func runOne(timed: Bool) async throws -> (ttft: Double, total: Double, chars: Int, text: String) {
         let session = LanguageModelSession(instructions: Instructions("Be brief."))
         let opts = GenerationOptions(temperature: 0.0, maximumResponseTokens: maxTokens)
         let start = ContinuousClock.now
@@ -263,7 +309,7 @@ final class BenchRunner: ObservableObject {
         let end = ContinuousClock.now
         let total = ms(end - start)
         let ttft = firstAt.map { ms($0 - start) } ?? total
-        return (ttft, total, last.count)
+        return (ttft, total, last.count, last)
     }
 
     // MARK: - Helpers
@@ -326,11 +372,11 @@ struct BenchView: View {
                                 ForEach(runner.rows) { r in
                                     VStack(alignment: .leading) {
                                         Text(r.backend).font(.subheadline.bold())
-                                        Text(String(format: "load %.0f ms · ttft %.0f ms · total %.0f ms · %d chars",
-                                                     r.loadMs, r.ttftMs, r.totalMs, r.chars))
+                                        Text(String(format: "load %.0f ms · ttft %.0f ms · total %.0f ms · %d chars%@",
+                                                     r.loadMs, r.ttftMs, r.totalMs, r.chars,
+                                                     r.tokens.map { " (\($0) tok)" } ?? ""))
                                             .font(.caption).foregroundStyle(.secondary)
-                                        Text(String(format: "%.1f chars/sec E2E  ·  %.1f chars/sec decode-only",
-                                                     r.charsPerSec, r.decodeCharsPerSec))
+                                        Text(tokenLine(for: r))
                                             .font(.caption).foregroundStyle(.secondary)
                                     }
                                 }
@@ -386,6 +432,15 @@ struct BenchView: View {
         case .done:               return "Done — CSV copied + saved"
         case .failed(let e):      return "Failed: \(e)"
         }
+    }
+
+    private func tokenLine(for r: BenchRunner.Row) -> String {
+        if let tps = r.decodeTokensPerSec, let e2e = r.e2eTokensPerSec {
+            return String(format: "%.1f tok/s decode  ·  %.1f tok/s E2E  ·  %.0f chars/s decode",
+                           tps, e2e, r.decodeCharsPerSec)
+        }
+        return String(format: "%.0f chars/s decode  ·  %.0f chars/s E2E  (tokenizer N/A)",
+                       r.decodeCharsPerSec, r.charsPerSec)
     }
 }
 

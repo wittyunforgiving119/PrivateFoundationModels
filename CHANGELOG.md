@@ -6,6 +6,44 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.10.8] — 2026-05-14
+
+### Added
+- `LanguageModelBackend.tokenCount(_ text: String) async -> Int?`
+  — backends can now expose their own tokenizer for honest
+  tokens-per-second measurement. Default implementation returns
+  `nil` (used for Apple FM where the tokenizer is hidden).
+  Concrete implementations:
+  - `CoreMLBackendImpl` → `underlying.tokenizerRef.encode(...).count`
+  - `Qwen3Backend`     → `tokenizer.encode(...).count`
+  - `MLXBackend`       → `await underlying.perform { _, tok in tok.encode(...).count }`
+- `PFMiPhoneBench` CSV gains `output_tokens`, `tok_per_sec_e2e`,
+  `tok_per_sec_decode` columns. Persists a fresh header before
+  the first backend runs so external monitors can distinguish
+  "this run hasn't started" from "leftover file from last run".
+
+### Changed — methodology correction
+The Gemma 4 E2B numbers quoted in v0.10.7 were derived as
+`chars_per_sec ÷ 4 chars/token`, which is wrong for the Gemma 4
+SentencePiece tokenizer on technical English — the real ratio
+is ~5.8 chars/token (Swift identifiers and short keywords pack
+tighter). With actual tokenizer-driven counts:
+
+- CoreML / ANE Gemma-4-E2B decode: 34.6 tok/sec (was claimed 50)
+- MLX / GPU Gemma-4-E2B 4-bit decode: 45.2 tok/sec (was claimed 65)
+- MLX vs CoreML decode gap: **1.31×** (unchanged — the ratio
+  was right even though the absolute numbers were 45% too high).
+
+`docs/RUNTIME_COMPARISON.md` now has an explicit "methodology
+note (and a correction)" paragraph. The hero chart
+`docs/media/gemma4-runtime-iphone.png` is regenerated with real
+tok/sec on the y-axis.
+
+The older Qwen / LFM / Apple FM rows in `docs/BENCHMARKS.csv`
+are still chars-per-sec only — they predate the tokenCount API
+and will get backfilled the next time their respective benches
+run on a v0.10.8+ build.
+
 ## [0.10.7] — 2026-05-14
 
 ### Added
