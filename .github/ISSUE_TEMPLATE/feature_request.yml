@@ -1,0 +1,46 @@
+name: Feature request
+description: Propose a new feature, model, or backend.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New model in CoreML catalog
+        - New model in MLX catalog
+        - Apple FM passthrough behavior
+        - Core API surface (LanguageModelSession, Generable, Tool, etc.)
+        - New backend (llama.cpp, remote API, etc.)
+        - Tooling (pfm-verify, pfm-deep, pfm-bench, etc.)
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Use cases, missing API, real model you can't load today, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: sketch
+    attributes:
+      label: Proposed API or behavior (optional)
+      description: |
+        Swift sketch, repo URL, model card link — anything that helps
+        scope the work.
+      render: swift
+  - type: dropdown
+    id: pr-intent
+    attributes:
+      label: Will you send a PR?
+      options:
+        - Yes
+        - Maybe — depends on guidance
+        - No, just opening the issue
+    validations:
+      required: true

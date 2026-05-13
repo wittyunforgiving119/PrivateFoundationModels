@@ -1,0 +1,54 @@
+name: Bug report
+description: Something doesn't work the way it should.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Which backend?
+      options:
+        - PrivateFoundationModelsApple (Apple FM passthrough)
+        - PrivateFoundationModelsCoreML
+        - PrivateFoundationModelsMLX
+        - Core API (no backend involved)
+        - Multiple / not sure
+    validations:
+      required: true
+  - type: input
+    id: pfm-version
+    attributes:
+      label: PFM version
+      placeholder: "v0.5.2"
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware + OS + Xcode
+      placeholder: "M4 Max / macOS 26.0 / Xcode 26.1.1"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: |
+        Minimal Swift snippet + commands. If it's a backend issue, the
+        relevant `swift run -c release pfm-{verify,deep,mlx-deep,apple-deep}`
+        output is exactly what we want.
+      render: swift
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
