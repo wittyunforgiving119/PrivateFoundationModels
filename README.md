@@ -417,7 +417,19 @@ Three thin executables share the same `PFMServeKit` transport layer:
 - `pfm-serve-coreml --model <id>` — any catalog model
 - `pfm-serve-mlx --model <repo>` — any `mlx-community/*` repo (build via xcodebuild)
 
-Endpoints: `POST /v1/chat/completions`, `POST /v1/completions`, `GET /v1/models`, `GET /healthz`. Streaming (SSE) lands in v0.7.1. Sample response: [`docs/pfm-serve-sample.json`](docs/pfm-serve-sample.json).
+Endpoints: `POST /v1/chat/completions` (with `"stream": true` SSE since v0.7.1), `POST /v1/completions`, `GET /v1/models`, `GET /healthz`. Sample unary response: [`docs/pfm-serve-sample.json`](docs/pfm-serve-sample.json). Sample streaming session: [`docs/pfm-serve-stream-sample.txt`](docs/pfm-serve-stream-sample.txt).
+
+```bash
+curl -N http://127.0.0.1:11434/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Three Swift facts."}],"stream":true}'
+# data: {"choices":[{"delta":{"role":"assistant"}, ...}]}
+# data: {"choices":[{"delta":{"content":"Swift concurrency allows ..."}, ...}]}
+# data: {"choices":[{"delta":{"content":" using Grand Central Dispatch ..."}, ...}]}
+# ...
+# data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+# data: [DONE]
+```
 
 ## Tutorial
 
@@ -503,12 +515,15 @@ Standardized `streamResponse` bench on M4 Max / macOS 26.0 (median of 3 timed it
   `load(adapter:)` overloads. Surfaces Apple's `UseCase` and
   `Adapter` through PFM so apps can target content-tagging or load
   a fine-tuned LoRA without importing FoundationModels directly.
-- **v0.7.0 (current)** — `pfm-serve-{apple,coreml,mlx}` — OpenAI-
+- v0.7.0 — `pfm-serve-{apple,coreml,mlx}` — OpenAI-
   compatible local HTTP servers. Exposes `POST /v1/chat/completions`,
   `POST /v1/completions`, `GET /v1/models`, `GET /healthz` over
-  `Network.framework`'s `NWListener` (zero new package deps). Curl
-  Apple Intelligence from any language. Streaming via SSE lands in
-  v0.7.1.
+  `Network.framework`'s `NWListener` (zero new package deps).
+- **v0.7.1 (current)** — Streaming Server-Sent Events for
+  `/v1/chat/completions` (request `"stream": true`). OpenAI-shaped
+  `chat.completion.chunk` payloads with incremental `delta.content`,
+  terminated by `data: [DONE]`. Apple Intelligence streamed to
+  `curl -N` in real time.
 - v0.8 — Qwen3-VL routing on CoreML, grammar-constrained sampler
   behind a feature flag, llama.cpp / GGUF backend.
 - v0.6 — llama.cpp / GGUF backend

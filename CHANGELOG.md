@@ -6,6 +6,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-05-13
+
+### Added
+- `/v1/chat/completions` now honors `"stream": true` and replies
+  with Server-Sent Events shaped exactly like OpenAI's
+  `chat.completion.chunk`:
+    - Initial `delta.role = "assistant"` chunk.
+    - One chunk per incremental `delta.content` slice as PFM's
+      cumulative streamResponse advances.
+    - Final chunk with `finish_reason: "stop"`, followed by
+      `data: [DONE]\n\n`.
+  Backend errors mid-stream are emitted as an `error` SSE event
+  before `[DONE]`.
+- `docs/pfm-serve-stream-sample.txt`: real captured streaming
+  exchange from Apple FM (11 chunks).
+
+### Notes
+- Framing uses `Connection: close` (no chunked encoding), which is
+  the simplest pattern that works with curl, the OpenAI SDKs,
+  EventSource browsers, `requests` + `sseclient`, etc.
+
 ## [0.7.0] — 2026-05-13
 
 ### Added

@@ -1,0 +1,55 @@
+$ swift run -c release pfm-serve-apple
+[pfm-serve] listening on http://127.0.0.1:11434  →  model=apple-fm
+
+$ curl -sN http://127.0.0.1:11434/v1/chat/completions \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"apple-fm",
+         "messages":[{"role":"user",
+                      "content":"Write three concise sentences about Swift concurrency."}],
+         "max_tokens":200,"temperature":0,"stream":true}'
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"role":"assistant"},"index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":"Swift concurrency allows developers to perform tasks asynchronously"},
+                   "index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":" using Grand Central Dispatch (GCD) or Swift"},
+                   "index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":"'s native concurrency features like async/await"},
+                   "index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":". This enables non-blocking operations, improving application"},
+                   "index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":" responsiveness and efficiency. By leveraging Swift's concurrency"},
+                   "index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":" model, developers can write cleaner and more maintainable"},
+                   "index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":" code, especially in scenarios involving network requests, file"},
+                   "index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":" I/O, and other time-consuming operations"},
+                   "index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{"content":"."},"index":0,"finish_reason":null}],"created":...}
+
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"apple-fm",
+        "choices":[{"delta":{},"index":0,"finish_reason":"stop"}],"created":...}
+
+data: [DONE]
+
+# Captured on Apple M4 Max / macOS 26.0 / Xcode 26.1.1 — Apple Intelligence
+# native on-device LLM, streamed through pfm-serve-apple v0.7.1 in 11 chunks.

@@ -97,8 +97,14 @@ public final class PFMServer: @unchecked Sendable {
                 self.receiveRequest(on: connection) { [weak self] request in
                     guard let self else { return }
                     Task {
-                        let response = await self.dispatch(request)
-                        self.send(response, on: connection)
+                        // `dispatch` returns a response for unary
+                        // endpoints; for streaming chat completions it
+                        // writes SSE chunks directly to `connection` and
+                        // returns `nil` to tell us the connection was
+                        // already handed off.
+                        if let response = await self.dispatch(request, on: connection) {
+                            self.send(response, on: connection)
+                        }
                     }
                 }
             case .failed, .cancelled:
@@ -160,7 +166,10 @@ public final class PFMServer: @unchecked Sendable {
 
     // MARK: - Routing
 
-    private func dispatch(_ request: HTTPRequest?) async -> HTTPResponse {
+    private func dispatch(
+        _ request: HTTPRequest?,
+        on connection: NWConnection
+    ) async -> HTTPResponse? {
         guard let request else {
             return HTTPResponse(status: 400, body: "bad request")
         }
@@ -171,7 +180,7 @@ public final class PFMServer: @unchecked Sendable {
             return modelsList()
         case ("POST", "/v1/chat/completions"),
              ("POST", "/v1/completions"):
-            return await chatCompletions(request)
+            return await chatCompletions(request, on: connection)
         default:
             return HTTPResponse(status: 404, body: "not found")
         }
@@ -190,7 +199,10 @@ public final class PFMServer: @unchecked Sendable {
         return HTTPResponse.json(200, payload)
     }
 
-    private func chatCompletions(_ request: HTTPRequest) async -> HTTPResponse {
+    private func chatCompletions(
+        _ request: HTTPRequest,
+        on connection: NWConnection
+    ) async -> HTTPResponse? {
         guard
             let json = try? JSONSerialization.jsonObject(with: request.body) as? [String: Any]
         else {
@@ -198,12 +210,13 @@ public final class PFMServer: @unchecked Sendable {
         }
 
         let prompt: String
+        let instructionsText: String
         if let messages = json["messages"] as? [[String: Any]] {
             // Chat-completions: render messages back into a single prompt
             // string. We surface the most recent user message as the
             // explicit `respond(to:)` argument and prepend any prior
             // system messages as instructions.
-            var instructionsText = ""
+            var instr = ""
             var latestUser = ""
             var priorTurns: [String] = []
             for msg in messages {
@@ -211,8 +224,8 @@ public final class PFMServer: @unchecked Sendable {
                 let content = (msg["content"] as? String) ?? ""
                 switch role {
                 case "system":
-                    if !instructionsText.isEmpty { instructionsText += "\n\n" }
-                    instructionsText += content
+                    if !instr.isEmpty { instr += "\n\n" }
+                    instr += content
                 case "user":
                     if !latestUser.isEmpty {
                         priorTurns.append("User: \(latestUser)")
@@ -224,26 +237,139 @@ public final class PFMServer: @unchecked Sendable {
                     priorTurns.append("\(role): \(content)")
                 }
             }
+            instructionsText = instr
             if priorTurns.isEmpty {
                 prompt = latestUser
             } else {
                 prompt = priorTurns.joined(separator: "\n") + "\nUser: \(latestUser)"
             }
-            return await runChatCompletion(
-                instructions: instructionsText, prompt: prompt,
-                json: json
-            )
         } else if let single = json["prompt"] as? String {
             // /v1/completions (legacy): single string prompt.
-            return await runChatCompletion(
-                instructions: "", prompt: single, json: json
-            )
+            instructionsText = ""
+            prompt = single
         } else {
             return HTTPResponse.json(400, [
                 "error": ["message": "missing 'messages' or 'prompt'"]
             ])
         }
+
+        if (json["stream"] as? Bool) == true {
+            // SSE — write headers + chunks directly, return nil so
+            // dispatch knows the connection is taken.
+            await runChatCompletionStreaming(
+                instructions: instructionsText, prompt: prompt,
+                json: json, on: connection
+            )
+            return nil
+        } else {
+            return await runChatCompletion(
+                instructions: instructionsText, prompt: prompt, json: json
+            )
+        }
     }
+
+    // MARK: - Streaming (SSE)
+
+    private func runChatCompletionStreaming(
+        instructions: String,
+        prompt: String,
+        json: [String: Any],
+        on connection: NWConnection
+    ) async {
+        let session: LanguageModelSession
+        if instructions.isEmpty {
+            session = LanguageModelSession()
+        } else {
+            session = LanguageModelSession(instructions: Instructions(instructions))
+        }
+        let temperature = (json["temperature"] as? Double)
+        let maxTokens = (json["max_tokens"] as? Int) ?? (json["max_completion_tokens"] as? Int)
+        let options = GenerationOptions(
+            temperature: temperature, maximumResponseTokens: maxTokens
+        )
+        let id = "chatcmpl-\(UUID().uuidString)"
+        let created = Int(Date().timeIntervalSince1970)
+
+        // SSE headers. `Connection: close` lets clients use simple
+        // read-until-EOF framing instead of chunked encoding.
+        let header = """
+        HTTP/1.1 200 OK\r
+        content-type: text/event-stream\r
+        cache-control: no-cache\r
+        connection: close\r
+        access-control-allow-origin: *\r
+        \r
+
+        """
+        connection.send(content: Data(header.utf8), completion: .contentProcessed { _ in })
+
+        // Initial role chunk so clients see the assistant turn start.
+        send(chunk: chunkPayload(id: id, created: created,
+                                  role: "assistant", content: nil, finish: nil),
+             on: connection)
+
+        do {
+            var lastLen = 0
+            let stream = session.streamResponse(to: prompt, options: options)
+            for try await snapshot in stream {
+                let text = snapshot.content
+                if text.count > lastLen {
+                    let delta = String(text.suffix(text.count - lastLen))
+                    lastLen = text.count
+                    send(chunk: chunkPayload(id: id, created: created,
+                                              role: nil, content: delta, finish: nil),
+                         on: connection)
+                }
+            }
+            send(chunk: chunkPayload(id: id, created: created,
+                                      role: nil, content: nil, finish: "stop"),
+                 on: connection)
+        } catch {
+            // Surface the error to the client in the same SSE stream
+            // before terminating. Mirrors how OpenAI returns
+            // `error` events.
+            let errPayload: [String: Any] = [
+                "error": ["message": "\(error)", "type": "pfm_generation_error"]
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: errPayload) {
+                let line = "data: \(String(data: data, encoding: .utf8) ?? "{}")\n\n"
+                connection.send(content: Data(line.utf8), completion: .contentProcessed { _ in })
+            }
+        }
+        // OpenAI sentinel.
+        let done = "data: [DONE]\n\n"
+        connection.send(content: Data(done.utf8), completion: .contentProcessed { _ in
+            connection.cancel()
+        })
+    }
+
+    private func chunkPayload(
+        id: String, created: Int,
+        role: String?, content: String?, finish: String?
+    ) -> [String: Any] {
+        var delta: [String: Any] = [:]
+        if let role { delta["role"] = role }
+        if let content { delta["content"] = content }
+        return [
+            "id": id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": modelLabel,
+            "choices": [[
+                "index": 0,
+                "delta": delta,
+                "finish_reason": finish as Any? ?? NSNull(),
+            ]],
+        ]
+    }
+
+    private func send(chunk: [String: Any], on connection: NWConnection) {
+        guard let data = try? JSONSerialization.data(withJSONObject: chunk) else { return }
+        let line = "data: \(String(data: data, encoding: .utf8) ?? "{}")\n\n"
+        connection.send(content: Data(line.utf8), completion: .contentProcessed { _ in })
+    }
+
+    // MARK: - Non-streaming
 
     private func runChatCompletion(
         instructions: String,
