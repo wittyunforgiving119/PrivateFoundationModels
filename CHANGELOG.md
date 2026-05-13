@@ -6,6 +6,82 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-05-13
+
+### Added
+- Streaming tool calls. `stream: true` + `tools[]` now emits
+  OpenAI-shaped tool-call delta chunks (`role` → tool-call
+  metadata → `function.arguments` → `finish_reason:"tool_calls"`
+  → `[DONE]`). Verified end-to-end via the official `openai`
+  Python SDK's chunk accumulation.
+- `bin/post-tabs.sh` — opens all 4 pre-filled launcher URLs in
+  the default browser at once.
+- `bin/post-x.py` — Twitter v2 API poster (env-var-driven; dry-runs
+  without creds).
+- `bin/post-reddit.py` — Reddit script-app poster (env-var-driven;
+  dry-runs without creds).
+- `Examples/PythonClient/openai_stream_tools_demo.py` captures the
+  SDK accumulation pattern for documentation.
+
+## [0.9.0] — 2026-05-13
+
+### Added
+- `EmbeddingBackend` protocol in PrivateFoundationModels.
+- `SystemLanguageModel.defaultEmbedder` process-wide slot.
+- POST `/v1/embeddings` on pfm-serve. OpenAI shape on both sides;
+  returns 503 with a clear message when no embedder is installed.
+- `MLXEmbedder` wrapping mlx-swift-lm's `EmbedderModelContainer`.
+  Standard BERT-style tokenize → pad → mask → forward → pool →
+  L2-normalize pipeline. Probes output dim on load.
+- `pfm-serve-mlx --embedding-model <repo>` flag wires the
+  MLXEmbedder into the server.
+- `Examples/PythonClient/openai_embeddings_demo.py`.
+
+### Notes
+- The MLXEmbedder.embed() tensor pipeline was marked experimental
+  in this release because it hadn't been run against a real
+  embedding repo. v0.9.2 lands real-model verification.
+
+## [0.8.1] — 2026-05-13
+
+### Added
+- OpenAI vision content arrays. `messages.content` can be a string
+  or an array of `{type: text|image_url}` parts. `image_url.url`
+  accepts `data:image/<mime>;base64,...` URIs (decoded inline) and
+  `https://...` URLs (fetched synchronously). First image flows to
+  `session.respond(to:image:)` / `streamResponse(to:image:)`;
+  text-only backends (Apple FM) silently drop the attachment.
+- Streaming + content arrays supported in the same path.
+
+## [0.8.0] — 2026-05-13
+
+### Added
+- OpenAI function calling over HTTP. `/v1/chat/completions` accepts
+  the standard `tools: [{type, function: {name, description,
+  parameters}}]` shape, injects the catalog into the system prompt,
+  parses the model's `{"tool_call":{"name":..., "arguments":...}}`
+  reply into OpenAI's `tool_calls` response shape with
+  `finish_reason: "tool_calls"`.
+- Round-trip support: client sends back the tool result as
+  `{"role":"tool", "tool_call_id":..., "content":...}` and the
+  server feeds the prior turn into the prompt context.
+- `assistant` messages with `tool_calls` rendered into prompt
+  context so the model has full history.
+- `Examples/PythonClient/openai_tools_demo.py` drives a two-turn
+  function call against Apple FM via the official `openai` SDK.
+
+### Notes
+- Streaming + tools queued for v0.9.1.
+
+## [0.7.3] — 2026-05-13
+
+### Added
+- JSON mode honored in the streaming `/v1/chat/completions` path
+  too. The same strict-JSON instruction the non-streaming path
+  uses is injected into the system prompt; mid-stream fence
+  stripping is intentionally not attempted (chunk boundaries
+  would split the fence).
+
 ## [0.7.2] — 2026-05-13
 
 ### Added
