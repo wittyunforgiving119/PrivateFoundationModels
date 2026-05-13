@@ -39,6 +39,25 @@ public enum JSONExtraction {
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Streaming-aware variant of `extractObject`. Returns the longest
+    /// prefix of the input that can be closed into a syntactically valid
+    /// JSON object by appending closing brackets, or `nil` if nothing
+    /// usable has arrived yet.
+    ///
+    /// Example: given `{"a":"hello","b":12.5,"c":tr`, this returns
+    /// `{"a":"hello","b":12.5}` — the trailing `"c":tr` is incomplete so
+    /// we truncate to the last "value just finished" boundary and close
+    /// the open brace.
+    ///
+    /// Used by `LanguageModelSession.streamResponse(to:generating:)` so
+    /// callers see snapshot updates as soon as one field's value parses,
+    /// not only after the whole object closes.
+    public static func extractPartialObject(_ text: String) -> String? {
+        let dethought = stripThinkBlocks(text)
+        let unfenced = stripCodeFence(dethought)
+        return PartialJSONParser.firstObject(in: unfenced)
+    }
+
     /// Strip a leading ``` or ```language fence and the trailing ``` fence
     /// if both are present. Preserves the inner content verbatim. Returns
     /// `text` unchanged when no fence is detected.

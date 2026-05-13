@@ -480,16 +480,29 @@ public final class LanguageModelSession: @unchecked Sendable {
         Task {
             do {
                 for try await snapshot in upstream {
-                    // Partial JSON may be invalid mid-stream; only emit a
-                    // snapshot when the prefix parses. The final emission
-                    // is always validated below. Try the raw bytes first,
-                    // then fall back to a balanced-object extraction so
-                    // models that wrap output in code fences (```json ... ```)
-                    // still produce snapshots once the closing brace lands.
-                    let candidate = JSONExtraction.extractObject(snapshot.content) ?? snapshot.content
-                    if let decoded = try? JSONDecoder().decode(T.self, from: Data(candidate.utf8)) {
-                        continuation.yield(.init(content: decoded))
-                        finalContent.set(decoded)
+                    // Try three decode candidates in order:
+                    //   1. A complete `{ ... }` extracted from the buffer
+                    //      (handles full-object output once the closing
+                    //      brace lands).
+                    //   2. A *partial* object — the longest prefix that can
+                    //      be balanced with synthetic closing brackets.
+                    //      This lets snapshots advance every time a new
+                    //      field's value completes, matching Apple FM's
+                    //      incremental `Snapshot<T>` semantics.
+                    //   3. The raw buffer (rare; only useful if the model
+                    //      emitted bare JSON already).
+                    let candidates = [
+                        JSONExtraction.extractObject(snapshot.content),
+                        JSONExtraction.extractPartialObject(snapshot.content),
+                        snapshot.content,
+                    ].compactMap { $0 }
+
+                    for candidate in candidates {
+                        if let decoded = try? JSONDecoder().decode(T.self, from: Data(candidate.utf8)) {
+                            continuation.yield(.init(content: decoded))
+                            finalContent.set(decoded)
+                            break
+                        }
                     }
                 }
                 if finalContent.get() == nil {
