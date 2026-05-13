@@ -9,13 +9,16 @@ final class StubBackend: LanguageModelBackend, @unchecked Sendable {
         let text: String?
         let toolCalls: [BackendGeneration.ToolCall]
         let chunks: [String]?  // for streaming; if nil we emit `text` as one chunk
+        let transcriptDelta: [Transcript.Entry]
 
         init(text: String? = nil,
              toolCalls: [BackendGeneration.ToolCall] = [],
-             chunks: [String]? = nil) {
+             chunks: [String]? = nil,
+             transcriptDelta: [Transcript.Entry] = []) {
             self.text = text
             self.toolCalls = toolCalls
             self.chunks = chunks
+            self.transcriptDelta = transcriptDelta
         }
     }
 
@@ -78,7 +81,11 @@ final class StubBackend: LanguageModelBackend, @unchecked Sendable {
         if let delay = artificialDelay {
             try await Task.sleep(for: delay)
         }
-        return BackendGeneration(text: reply.text, toolCalls: reply.toolCalls)
+        return BackendGeneration(
+            text: reply.text,
+            toolCalls: reply.toolCalls,
+            transcriptDelta: reply.transcriptDelta
+        )
     }
 
     // Multimodal override. Records attachment count alongside the

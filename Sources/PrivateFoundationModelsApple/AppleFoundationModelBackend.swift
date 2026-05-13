@@ -110,8 +110,12 @@ public final class AppleFoundationModelBackend: LanguageModelBackend, @unchecked
             tools: appleTools,
             transcript: prepared.history
         )
+        // Snapshot the seed transcript count so we can extract just the
+        // entries Apple's tool loop added during this call.
+        let seedCount = session.transcript.count
         let appleOptions = Self.toAppleOptions(options)
         do {
+            let text: String
             if let pfmSchema = schema {
                 let appleSchema = try FoundationModels.GenerationSchema(
                     root: Self.pfmSchemaToDynamic(pfmSchema, name: "Root"),
@@ -122,14 +126,19 @@ public final class AppleFoundationModelBackend: LanguageModelBackend, @unchecked
                     schema: appleSchema,
                     options: appleOptions
                 )
-                return BackendGeneration(text: Self.generatedContentToJSON(response.content))
+                text = Self.generatedContentToJSON(response.content)
             } else {
                 let response = try await session.respond(
                     to: prepared.lastPrompt,
                     options: appleOptions
                 )
-                return BackendGeneration(text: response.content)
+                text = response.content
             }
+            let delta = Self.extractToolDelta(
+                fullTranscript: session.transcript,
+                from: seedCount
+            )
+            return BackendGeneration(text: text, transcriptDelta: delta)
         } catch is CancellationError {
             throw GenerationError.cancelled
         } catch let e as FoundationModels.LanguageModelSession.ToolCallError {
@@ -140,6 +149,65 @@ public final class AppleFoundationModelBackend: LanguageModelBackend, @unchecked
         } catch {
             throw GenerationError.backend(error)
         }
+    }
+
+    // MARK: - Transcript extraction (Apple → PFM)
+
+    /// Walk the post-call Apple `Transcript`, skip the seed prefix the
+    /// caller already gave us plus the new `.prompt` (already on PFM's
+    /// transcript) and the new `.response` (we append it ourselves
+    /// via `BackendGeneration.text`), and translate Apple's
+    /// `.toolCalls` / `.toolOutput` entries back to PFM
+    /// `Transcript.Entry` values.
+    static func extractToolDelta(
+        fullTranscript: FoundationModels.Transcript,
+        from seedCount: Int
+    ) -> [PrivateFoundationModels.Transcript.Entry] {
+        var out: [PrivateFoundationModels.Transcript.Entry] = []
+        let entries = Array(fullTranscript)
+        guard entries.count > seedCount else { return out }
+        for entry in entries.dropFirst(seedCount) {
+            switch entry {
+            case .toolCalls(let calls):
+                for call in calls {
+                    let args = call.arguments
+                    let argsJSON = generatedContentToJSON(args)
+                    out.append(.init(
+                        kind: .toolCall,
+                        content: "\(call.toolName)(\(argsJSON))",
+                        toolName: call.toolName,
+                        toolArguments: argsJSON
+                    ))
+                }
+            case .toolOutput(let output):
+                out.append(.init(
+                    kind: .toolOutput,
+                    content: segmentsToText(output.segments),
+                    toolName: output.toolName
+                ))
+            case .prompt, .response, .instructions:
+                // The new prompt and final response are tracked by PFM
+                // session-side, instructions never reappear after the
+                // seed. Skip.
+                continue
+            @unknown default:
+                continue
+            }
+        }
+        return out
+    }
+
+    private static func segmentsToText(
+        _ segments: [FoundationModels.Transcript.Segment]
+    ) -> String {
+        segments.map { segment -> String in
+            switch segment {
+            case .text(let t): return t.content
+            case .structure(let s):
+                return generatedContentToJSON(s.content)
+            @unknown default: return ""
+            }
+        }.joined()
     }
 
     // MARK: - Streaming

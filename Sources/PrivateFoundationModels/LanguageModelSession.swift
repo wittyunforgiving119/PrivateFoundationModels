@@ -338,6 +338,16 @@ public final class LanguageModelSession: @unchecked Sendable {
                     throw GenerationError.backend(error)
                 }
 
+                // If the backend already ran the tool loop internally
+                // (Apple FM does this) it can report the resulting
+                // .toolCall / .toolOutput turns via transcriptDelta so
+                // we can record them in our own transcript without
+                // re-invoking the tools.
+                if !result.transcriptDelta.isEmpty {
+                    state.append(result.transcriptDelta)
+                    newEntries.append(contentsOf: result.transcriptDelta)
+                }
+
                 // Tool calls take priority over text — if both are present we
                 // dispatch tools first and discard the text (matching Apple's
                 // behavior).

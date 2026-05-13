@@ -139,9 +139,13 @@ let response = try await session.respond(
 print(response.content)  // Address(city: "Paris", country: "France") — from Apple's model
 ```
 
-Verified on macOS 26.0 — `pfm-apple-deep` runs **PASS 10 / MODEL 4 / FAIL 0** across the full Generable × Tool × Multimodal × PromptBuilder matrix. See [`docs/pfm-apple-deep.log`](docs/pfm-apple-deep.log). The throwing-tool scenario specifically proves the bridge: Apple's session called PFM's `boom` tool with the model-supplied arguments, the tool threw `Boom`, Apple wrapped it in `ToolCallError`, the backend unwrapped to `underlyingError`, and PFM saw `GenerationError.backend(Boom)` — identical to CoreML / MLX. `T1`–`T4` came back `MODEL` because Apple's model often declines to use a tool when it can answer arithmetic directly (same model-behaviour-not-framework outcome the smaller test models produce).
+Verified on macOS 26.0 — `pfm-apple-deep` runs **PASS 14 / MODEL 0 / FAIL 0** across the full Generable × Tool × Multimodal × PromptBuilder matrix. See [`docs/pfm-apple-deep.log`](docs/pfm-apple-deep.log). The throwing-tool scenario specifically proves the bridge: Apple's session called PFM's `boom` tool with the model-supplied arguments, the tool threw `Boom`, Apple wrapped it in `ToolCallError`, the backend unwrapped to `underlyingError`, and PFM saw `GenerationError.backend(Boom)` — identical to CoreML / MLX.
 
-One caveat: PFM's transcript does **not** record intermediate `.toolCall` / `.toolOutput` entries when running through Apple FM (Apple's session runs the tool loop opaquely). Tools still execute and influence the answer; only the per-turn audit trail is lost. CoreML and MLX backends continue to expose the full transcript including tool calls and outputs.
+The Apple backend also reconstructs the per-turn audit trail: it snapshots `session.transcript` before and after the call, translates the new Apple-side `.toolCalls` / `.toolOutput` entries back into PFM `Transcript.Entry` values, and returns them via `BackendGeneration.transcriptDelta`. The session appends those before recording the final `.response`, so `session.transcript` looks the same on all three backends after a tool turn:
+
+```
+[prompt: "What is 17 + 25?", toolCall: add({"a":17,"b":25}), toolOutput: "42", response: "17 plus 25 is 42."]
+```
 
 ### MLX backend (alternative)
 
@@ -408,7 +412,7 @@ Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1 / Xcode 26.1, against `mlboy
 | `swift run -c release pfm-deep` | Every Generable shape × Tool pattern against the real CoreML model | **PASS 7 / MODEL 4 / FAIL 0** ([log](docs/pfm-deep.log)) |
 | `pfm-mlx-deep` (xcodebuild) | Same scenario matrix routed through MLX-Swift on a real `mlx-community/*` model | **PASS 9 / MODEL 5 / FAIL 0** ([log](docs/pfm-mlx-deep.log)) |
 | `swift run -c release pfm-apple-smoke` | `respond(to:)` + `streamResponse(to:)` + **Generable** through PFM hitting **Apple's actual native FoundationModels** | ✓ load 0 s, ✓ respond 0.7 s, ✓ stream, ✓ Generable 1.3 s ([log](docs/pfm-apple-smoke.log)) |
-| `swift run -c release pfm-apple-deep` | Full Generable × Tool × Multimodal × PromptBuilder matrix through PFM hitting Apple's native FoundationModels | **PASS 10 / MODEL 4 / FAIL 0** ([log](docs/pfm-apple-deep.log)) |
+| `swift run -c release pfm-apple-deep` | Full Generable × Tool × Multimodal × PromptBuilder matrix through PFM hitting Apple's native FoundationModels, with transcript reconstruction so tool turns appear in `session.transcript` | **PASS 14 / MODEL 0 / FAIL 0** ([log](docs/pfm-apple-deep.log)) |
 
 `MODEL` = API works, content quality limited by the small model used for verification (a larger model lands the test in PASS). `FAIL` = framework / backend regression — zero is the only acceptable number across every backend.
 
@@ -427,13 +431,20 @@ Captured on Apple M4 Max / macOS 26.0 / Swift 6.2.1 / Xcode 26.1, against `mlboy
 - v0.4.1 — `@Generable` structured output cross-translation
   for Apple FM (PFM `GenerationSchema` → Apple `DynamicGenerationSchema`,
   Apple `GeneratedContent` → JSON for PFM's decoder).
-- **v0.5.0 (current)** — `Tool` cross-translation for Apple FM via
+- v0.5.0 — `Tool` cross-translation for Apple FM via
   runtime `PFMToolAdapter`; PFM tools are exposed to Apple's
   session, called automatically by Apple's tool loop, and thrown
   errors are unwrapped from `ToolCallError` before reaching the
-  caller. Full feature parity across all three backends.
-- v0.6 — Qwen3-VL routing on CoreML + transcript reconstruction
-  from Apple's opaque tool loop
+  caller.
+- **v0.5.1 (current)** — Transcript reconstruction through Apple's
+  opaque tool loop: the backend translates Apple's post-call
+  `.toolCalls` / `.toolOutput` entries back to PFM
+  `Transcript.Entry` values and returns them via
+  `BackendGeneration.transcriptDelta`, so `session.transcript`
+  surfaces the full audit trail on Apple just as it does on
+  CoreML / MLX. `pfm-apple-deep` matrix runs **PASS 14 / FAIL 0**.
+- v0.6 — Qwen3-VL routing on CoreML, grammar-constrained sampler
+  behind a feature flag, llama.cpp / GGUF backend.
 - v0.6 — llama.cpp / GGUF backend
 - v0.7 — Grammar-constrained decoding
 - v0.8 — Audio input on the session API + speculative decoding

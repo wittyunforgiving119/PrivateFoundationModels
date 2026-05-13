@@ -112,9 +112,24 @@ public struct BackendGeneration: Sendable {
     /// `generate` again to get the post-tool response.
     public let toolCalls: [ToolCall]
 
-    public init(text: String?, toolCalls: [ToolCall] = []) {
+    /// Extra transcript entries the backend already produced internally
+    /// (for example, when Apple FoundationModels runs its tool loop
+    /// opaquely and the resulting `.toolCall` / `.toolOutput` turns are
+    /// only visible in Apple's `Transcript` snapshot after the call
+    /// returns). The session appends these to its own transcript before
+    /// recording `text` as the final `.response`, so callers see the same
+    /// audit trail they get from CoreML and MLX backends that drive the
+    /// tool loop turn-by-turn.
+    public let transcriptDelta: [Transcript.Entry]
+
+    public init(
+        text: String?,
+        toolCalls: [ToolCall] = [],
+        transcriptDelta: [Transcript.Entry] = []
+    ) {
         self.text = text
         self.toolCalls = toolCalls
+        self.transcriptDelta = transcriptDelta
     }
 
     public struct ToolCall: Sendable {

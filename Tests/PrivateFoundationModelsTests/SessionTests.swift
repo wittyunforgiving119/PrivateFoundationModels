@@ -241,4 +241,48 @@ struct SessionTests {
         #expect(sawSuccess)
         #expect(sawConcurrent)
     }
+
+    // MARK: - Transcript delta (backends that ran the tool loop opaquely)
+
+    /// When a backend reports `transcriptDelta` alongside the final
+    /// text (e.g. Apple FM, which runs its tool loop internally), the
+    /// session must append those entries to its own transcript before
+    /// recording the final `.response`. This makes the audit trail
+    /// match what a session would see if it had driven the tool loop
+    /// turn-by-turn itself.
+    @Test func transcriptDeltaIsAppendedBeforeResponse() async throws {
+        let stub = StubBackend()
+        let delta: [Transcript.Entry] = [
+            Transcript.Entry(
+                kind: .toolCall,
+                content: "add({\"a\":17,\"b\":25})",
+                toolName: "add",
+                toolArguments: #"{"a":17,"b":25}"#
+            ),
+            Transcript.Entry(
+                kind: .toolOutput,
+                content: "42",
+                toolName: "add"
+            ),
+        ]
+        stub.enqueue(.init(text: "17 plus 25 is 42.", transcriptDelta: delta))
+        let model = SystemLanguageModel(backend: stub)
+        let session = LanguageModelSession(model: model)
+
+        let reply = try await session.respond(to: "What is 17 + 25?")
+        #expect(reply.content == "17 plus 25 is 42.")
+
+        let entries = session.transcript.entries
+        // prompt, toolCall, toolOutput, response — in order.
+        #expect(entries.count == 4)
+        #expect(entries[0].kind == .prompt)
+        #expect(entries[1].kind == .toolCall)
+        #expect(entries[1].toolName == "add")
+        #expect(entries[1].toolArguments == #"{"a":17,"b":25}"#)
+        #expect(entries[2].kind == .toolOutput)
+        #expect(entries[2].toolName == "add")
+        #expect(entries[2].content == "42")
+        #expect(entries[3].kind == .response)
+        #expect(entries[3].content == "17 plus 25 is 42.")
+    }
 }
