@@ -212,6 +212,29 @@ public enum CoreMLLanguageModel {
     public static func wrap(_ llm: CoreMLLLM, identifier: String) -> CoreMLBackendImpl {
         CoreMLBackendImpl(llm: llm, modelIdentifier: identifier)
     }
+
+    /// Load a CoreML-LLM bundle directly from a local directory. Skips the
+    /// HuggingFace fetch path — useful for sideloaded models on iPhone
+    /// (drop a `Documents/Models/<name>/` tree on-device), CI rigs that
+    /// pre-stage weights, and offline development.
+    ///
+    /// The directory must contain whatever layout `CoreMLLLM.load(from:)`
+    /// expects for the underlying architecture — typically `chunk*.mlmodelc`
+    /// (or `.mlpackage`), an `hf_model/` tokenizer dir, and any per-model
+    /// weight bins / npy tables alongside `model_config.json`.
+    public static func load(
+        localBundle directory: URL,
+        identifier: String? = nil,
+        computeUnits: MLComputeUnits = .cpuAndNeuralEngine,
+        onProgress: (@Sendable (String) -> Void)? = nil
+    ) async throws -> CoreMLBackendImpl {
+        onProgress?("Loading sideloaded bundle at \(directory.lastPathComponent)…")
+        let llm = try await CoreMLLLM.load(from: directory,
+                                            computeUnits: computeUnits,
+                                            onProgress: { stage in onProgress?(stage) })
+        let id = identifier ?? "coreml-local://\(directory.lastPathComponent)"
+        return CoreMLBackendImpl(llm: llm, modelIdentifier: id)
+    }
 }
 
 /// The actual `LanguageModelBackend` implementation. Public so callers can

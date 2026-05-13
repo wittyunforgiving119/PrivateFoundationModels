@@ -41,6 +41,51 @@ PFM's bench tracks two throughput numbers:
 
 **Sanity check.** 202 chars/sec on iPhone CoreML ≈ 50 tok/sec, matching the widely-reported "~49 tok/s on iPhone Pro for Qwen3.5-0.8B CoreML". 217 chars/sec on M4 Max CoreML ≈ 54 tok/sec. The earlier 147/158 numbers were honest E2E throughput but included prefill in the denominator, which made CoreML look slower than its decode loop actually is.
 
+## The runtime gap is architecture-dependent
+
+![Gemma 4 vs Qwen3.5 on iPhone Air, CoreML vs MLX](media/gemma4-runtime-iphone.png)
+
+Running Gemma 4 E2B (2 B effective via matformer + per-layer embeddings) head-to-head with Qwen3.5-0.8B on the same iPhone, same harness:
+
+| Model | Backend | Quant | Load | TTFT | Decode chars/sec | ≈ tok/sec |
+|---|---|---|---|---|---|---|
+| Qwen3.5-0.8B    | CoreML / ANE | FP16-ish | 28 s   | 584 ms | 196 | 49 |
+| Qwen3.5-0.8B    | MLX / GPU    | 4-bit    | 1.3 s  | 88 ms  | **568** | **142** |
+| Gemma-4-E2B     | CoreML / ANE | FP16-ish | 39 s ¹ | 673 ms | **199** | **50** |
+| Gemma-4-E2B     | MLX / GPU    | 4-bit    | 464 s² | 85 ms  | 261 | 65 |
+
+¹ Sideloaded — pushed via `xcrun devicectl device copy to` from the Mac. No HF download. 4.8 GB on-disk (text-only subset: chunk + prefill_chunk + per-layer embed weights + tokenizer).
+² First-run HuggingFace download over Wi-Fi. Cold load number — bench again after warm cache for steady-state.
+
+**Two stories.** On Qwen3.5 the MLX vs CoreML decode gap is 2.9× — runtime matters a lot. On Gemma 4 it collapses to **1.3×**. Same iPhone, same prompt; only the model architecture changes. Possible explanations:
+
+- Gemma 4 E2B is a matformer architecture with a 2.2 GB per-layer-embedding table that ANE handles efficiently in its weight-streaming pipeline. MLX has to keep more of that resident on the GPU's shared memory budget.
+- MLX 4-bit quantization wins ~3× on simple transformer decode (Qwen) but the matformer's per-layer block hides the GPU's quant advantage — most of the time is in the embedding fetch, not the matmul.
+- Whichever way the cause shakes out, the takeaway: "CoreML is slow" is wrong as a sweeping statement. CoreML is slow on naive transformer decode (Qwen-shaped) and competitive on architectures designed for on-device hardware (Gemma 4-shaped). Pick the runtime to match the architecture, not as a blanket choice.
+
+CoreML's ~50 tok/sec is identical between the two models despite Gemma 4 being 2.5× the effective parameter count. Useful corollary: when ANE is the bottleneck (not the model), you can run a bigger model for free.
+
+### Reproducing the Gemma 4 row
+
+The MLX side downloads on first launch (1.5 GB at 4-bit). The CoreML side needs a sideload, which is just a `devicectl` push from your Mac into the bench app's Documents container:
+
+```bash
+# Trim the local build to the text-only subset (skip vision/audio/mtp).
+SRC=~/Downloads/coreml-llm-artifacts/staging-2k-fast-prefill/gemma4-e2b
+DST=/tmp/gemma4-e2b
+mkdir -p "$DST"
+for it in chunk{1,2,3,4}.mlmodelc prefill_chunk{1,2,3,4}.mlmodelc \
+          *.npy *.bin model_config.json hf_model; do
+  cp -R "$SRC/$it" "$DST/" 2>/dev/null
+done
+# Push to iPhone (~2-3 min over USB-C).
+xcrun devicectl device copy to --device <UDID> \
+  --domain-type appDataContainer --domain-identifier dev.pebble.PFMiPhoneBench \
+  --source "$DST" --destination "Documents/Models/"
+```
+
+Then build and run the [`PFMiPhoneBench`](../Examples/PFMiPhoneBench/) app from Xcode — `BenchView.swift` auto-detects the sideloaded bundle and adds it to the plan list.
+
 Raw CSV: [`docs/BENCHMARKS.csv`](BENCHMARKS.csv) — accumulates per-hardware contributions over time.
 
 ## Same model on CoreML vs MLX

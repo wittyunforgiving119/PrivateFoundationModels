@@ -47,55 +47,119 @@ final class BenchRunner: ObservableObject {
         let load: () async throws -> any LanguageModelBackend
     }
 
+    /// Set of plans to run. Flip `runFullMatrix` to true to get the
+    /// 5-backend Apple FM + CoreML/MLX Qwen + LFM2.5 + Gemma sweep;
+    /// false runs just the Gemma 4 E2B head-to-head (CoreML sideload
+    /// vs MLX download) which is the comparison we publish.
+    private static let runFullMatrix = false
+
     private var plans: [Plan] {
         var out: [Plan] = []
 
-        #if canImport(FoundationModels)
-        // Apple FM only on iOS 26+ with Apple Intelligence on
-        out.append(Plan(
-            label: "Apple FM (.general)",
-            isAvailable: {
-                if #available(iOS 26.0, *) {
-                    return AppleFoundationModel.isAvailable
+        if Self.runFullMatrix {
+            #if canImport(FoundationModels)
+            out.append(Plan(
+                label: "Apple FM (.general)",
+                isAvailable: {
+                    if #available(iOS 26.0, *) {
+                        return AppleFoundationModel.isAvailable
+                    }
+                    return false
+                },
+                load: {
+                    if #available(iOS 26.0, *) {
+                        return AppleFoundationModel.load()
+                    }
+                    throw NSError(domain: "PFMBench", code: 1)
                 }
-                return false
-            },
-            load: {
-                if #available(iOS 26.0, *) {
-                    return AppleFoundationModel.load()
+            ))
+            #endif
+            out.append(Plan(
+                label: "CoreML / ANE (LFM2.5-350M)",
+                isAvailable: { true },
+                load: {
+                    try await CoreMLLanguageModel.load(.lfm2_5_350M) { @Sendable _ in }
                 }
-                throw NSError(domain: "PFMBench", code: 1)
-            }
-        ))
-        #endif
+            ))
+            out.append(Plan(
+                label: "CoreML / ANE (Qwen3.5-0.8B)",
+                isAvailable: { true },
+                load: {
+                    try await CoreMLLanguageModel.load(.qwen3_5_0_8B) { @Sendable _ in }
+                }
+            ))
+            out.append(Plan(
+                label: "MLX / GPU (Qwen3.5-0.8B-MLX-4bit)",
+                isAvailable: { true },
+                load: {
+                    try await MLXLanguageModel.load(
+                        .custom("mlx-community/Qwen3.5-0.8B-MLX-4bit")
+                    ) { _ in }
+                }
+            ))
+        }
 
+        // Gemma 4 E2B head-to-head.
+        // CoreML side: `devicectl`-pushed bundle under Documents/Models/.
+        // MLX side: downloads `mlx-community/gemma-4-e2b-it-4bit` on first run.
         out.append(Plan(
-            label: "CoreML / ANE (LFM2.5-350M)",
-            isAvailable: { true },
+            label: "CoreML / ANE (Gemma-4-E2B, sideload)",
+            isAvailable: { Self.sideloadedGemmaDir() != nil },
             load: {
-                try await CoreMLLanguageModel.load(.lfm2_5_350M) { @Sendable _ in }
+                guard let dir = Self.sideloadedGemmaDir() else {
+                    throw NSError(
+                        domain: "PFMBench", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey:
+                            "Sideload not found: Documents/Models/gemma4-e2b/"]
+                    )
+                }
+                return try await CoreMLLanguageModel.load(
+                    localBundle: dir,
+                    identifier: "coreml-local://gemma4-e2b"
+                ) { @Sendable _ in }
             }
         ))
 
         out.append(Plan(
-            label: "CoreML / ANE (Qwen3.5-0.8B)",
-            isAvailable: { true },
-            load: {
-                try await CoreMLLanguageModel.load(.qwen3_5_0_8B) { @Sendable _ in }
-            }
-        ))
-
-        out.append(Plan(
-            label: "MLX / GPU (Qwen3.5-0.8B-MLX-4bit)",
+            label: "MLX / GPU (Gemma-4-E2B-4bit)",
             isAvailable: { true },
             load: {
                 try await MLXLanguageModel.load(
-                    .custom("mlx-community/Qwen3.5-0.8B-MLX-4bit")
+                    .custom("mlx-community/gemma-4-e2b-it-4bit")
                 ) { _ in }
             }
         ))
 
         return out
+    }
+
+    /// Locate the sideloaded Gemma 4 E2B bundle. We accept either of
+    /// two layouts that `xcrun devicectl device copy to` can produce:
+    ///
+    ///   Documents/Models/gemma4-e2b/model_config.json   (subdir form)
+    ///   Documents/Models/model_config.json              (flat form,
+    ///                                                    what devicectl
+    ///                                                    actually does
+    ///                                                    when destination
+    ///                                                    is `Models/`)
+    ///
+    /// Returns nil when neither layout has a `model_config.json`, so
+    /// the plan can be skipped without the user noticing.
+    static func sideloadedGemmaDir() -> URL? {
+        guard let docs = FileManager.default.urls(
+            for: .documentDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let candidates = [
+            docs.appendingPathComponent("Models/gemma4-e2b", isDirectory: true),
+            docs.appendingPathComponent("Models", isDirectory: true),
+        ]
+        let fm = FileManager.default
+        for dir in candidates {
+            let cfg = dir.appendingPathComponent("model_config.json")
+            if fm.fileExists(atPath: cfg.path) { return dir }
+        }
+        return nil
     }
 
     // MARK: - Run

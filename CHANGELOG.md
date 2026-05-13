@@ -6,6 +6,34 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.10.7] — 2026-05-14
+
+### Added
+- `CoreMLLanguageModel.load(localBundle: URL, identifier: String?, ...)`
+  — sideload a CoreML-LLM bundle from a local directory, skipping
+  the HuggingFace fetch path. Powers the iPhone bench's
+  `Documents/Models/` auto-discovery.
+- PFMiPhoneBench: new Gemma 4 E2B head-to-head plan pair
+  — CoreML/ANE FP16 (sideload) vs MLX/GPU 4-bit (download).
+  Flag `runFullMatrix` in `BenchView.swift` flips between the
+  Gemma-only comparison and the full 5-backend sweep.
+- `docs/media/gemma4-runtime-iphone.png` + new "runtime gap is
+  architecture-dependent" section in `docs/RUNTIME_COMPARISON.md`.
+
+### Findings
+First Gemma 4 E2B numbers on `iPhone18,1` / iOS 26.4.2:
+
+- CoreML / ANE FP16  (sideloaded): TTFT 673 ms, decode 199 chars/sec ≈ **50 tok/sec**
+- MLX / GPU 4-bit (downloaded):    TTFT  85 ms, decode 261 chars/sec ≈ **65 tok/sec**
+
+The MLX-vs-CoreML decode gap collapses from **2.9× on Qwen3.5-0.8B**
+to **1.3× on Gemma 4 E2B**. Same iPhone, same prompt; the only
+difference is the model architecture. Gemma 4's matformer
+per-layer-embedding layout appears to be ANE-friendly enough
+that it hides the GPU quant advantage. Takeaway: "CoreML is
+slow" is wrong as a blanket — pick the runtime to match the
+architecture.
+
 ## [0.10.6] — 2026-05-14
 
 ### Added

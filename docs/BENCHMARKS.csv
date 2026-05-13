@@ -7,3 +7,5 @@ timestamp,hardware,backend,load_ms,ttft_ms,total_ms,output_chars,chars_per_sec,d
 2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2",Apple FM (.general),1,282,472,122,258.3,642.1
 2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2",CoreML / ANE (Qwen3.5-0.8B),1151978,560,2062,303,147.0,201.7
 2026-05-13T15:31:30Z,"iPhone18,1 / iOS 26.4.2",MLX / GPU (Qwen3.5-0.8B-MLX-4bit),86980,80,231,89,384.9,589.4
+2026-05-13T16:43:17Z,"iPhone18,1 / iOS 26.4.2","CoreML / ANE (Gemma-4-E2B, sideload)",38703,673,1110,87,78.4,198.8
+2026-05-13T16:43:17Z,"iPhone18,1 / iOS 26.4.2",MLX / GPU (Gemma-4-E2B-4bit),464009,85,350,69,197.3,261.0
