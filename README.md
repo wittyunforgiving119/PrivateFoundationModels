@@ -1,5 +1,10 @@
 # PrivateFoundationModels
 
+[![Swift](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fjohn-rocky%2FPrivateFoundationModels%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/john-rocky/PrivateFoundationModels)
+[![Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fjohn-rocky%2FPrivateFoundationModels%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/john-rocky/PrivateFoundationModels)
+[![CI](https://github.com/john-rocky/PrivateFoundationModels/actions/workflows/ci.yml/badge.svg)](https://github.com/john-rocky/PrivateFoundationModels/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **One call site. Three backends. On iOS 26 it runs Apple's native FoundationModels; on iOS 18 it runs your CoreML or MLX model.**
 
 <p align="center">
