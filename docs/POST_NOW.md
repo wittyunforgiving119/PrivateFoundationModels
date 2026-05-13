@@ -1,38 +1,34 @@
-# Post now — one-click launchers
+# Post now — v0.9.0 launchers
 
-Each link below opens the target platform's compose form **with the title, body, and URL already filled in**. You click → review → press the Post / Submit button. No copy-paste.
+Each link below opens the target platform's compose form **with the title, body, and URL already filled in**. Click → review → press Post. No copy-paste.
 
-> If your browser blocks the link click because it's coming from a `file://` markdown viewer, view this file on GitHub: <https://github.com/john-rocky/PrivateFoundationModels/blob/main/docs/POST_NOW.md>
+> View this file on GitHub if your browser blocks `file://` link clicks: <https://github.com/john-rocky/PrivateFoundationModels/blob/main/docs/POST_NOW.md>
 
 ## 1. X (recommended first move)
 
-[**→ Post the v0.5 launch tweet on X**](https://twitter.com/intent/tweet?text=PrivateFoundationModels%20v0.5%20%E2%80%94%20three%20Swift%20backends%2C%20same%20LanguageModelSession.respond%28to%3A%29%20call%20site%3A%0A%0A%C2%B7%20iOS%2026%2B%3A%20Apple%E2%80%99s%20native%20FoundationModels%20%28Apple%20Intelligence%29%0A%C2%B7%20iOS%2018%2B%3A%20CoreML%20%2F%20Apple%20Neural%20Engine%0A%C2%B7%20iOS%2017%2B%3A%20MLX%20%2F%20GPU%20%28any%20mlx-community%2F%2A%20model%29%0A%0A%40Generable%20%2B%20Tools%20work%20on%20all%20three.%20Verified.%0A%0Ahttps%3A%2F%2Fgithub.com%2Fjohn-rocky%2FPrivateFoundationModels)
+[**→ Post the v0.9 launch tweet on X**](https://twitter.com/intent/tweet?text=PrivateFoundationModels%20v0.9%20ships.%0A%0AApple%20Intelligence%20behind%20an%20OpenAI-compatible%20local%20API.%20All%20four%20surfaces%3A%0A%0A%C2%B7%20chat%20completions%20%28%2B%20streaming%20SSE%29%0A%C2%B7%20tool%20calling%20%28round-trip%20via%20official%20openai%20SDK%29%0A%C2%B7%20vision%20%28data%3Aimage%20base64%20content%20arrays%29%0A%C2%B7%20embeddings%0A%0AThe%20official%20openai%20Python%20SDK%20works%20unchanged.%20Two-line%20swap%3A%0A%0A%20%20client%20%3D%20OpenAI%28%0A%20%20%20%20%20%20base_url%3D%22http%3A%2F%2F127.0.0.1%3A11434%2Fv1%22%2C%0A%20%20%20%20%20%20api_key%3D%22x%22%29%0A%0Ahttps%3A%2F%2Fgithub.com%2Fjohn-rocky%2FPrivateFoundationModels)
 
-Attach a 6-second screen recording of `pfm-apple-deep` finishing with `PASS 14 / MODEL 0 / FAIL 0` before posting. That visual is the single biggest credibility signal we have.
+Attach a 8-15 second screen-record of `Examples/PythonClient/openai_tools_demo.py` running — that's the most credible visual we have (the OpenAI SDK calling Apple's on-device model + invoking a Swift-defined tool round-trip).
 
-For a multi-tweet thread (more detail per tweet), copy the body from [`docs/x-post-v0.5.md`](x-post-v0.5.md) and paste into a new thread after this initial tweet.
+## 2. Hacker News
 
-## 2. Hacker News (early-morning Pacific is the sweet spot)
+[**→ Submit to HN**](https://news.ycombinator.com/submitlink?u=https%3A%2F%2Fgithub.com%2Fjohn-rocky%2FPrivateFoundationModels&t=PrivateFoundationModels%3A%20Apple%20Intelligence%20behind%20an%20OpenAI-compatible%20local%20API)
 
-[**→ Submit to HN**](https://news.ycombinator.com/submitlink?u=https%3A%2F%2Fgithub.com%2Fjohn-rocky%2FPrivateFoundationModels&t=PrivateFoundationModels%3A%20one%20Apple-FM%20API%2C%20three%20on-device%20Swift%20backends)
+Title pre-filled: *PrivateFoundationModels: Apple Intelligence behind an OpenAI-compatible local API*
 
-Title pre-filled: *PrivateFoundationModels: one Apple-FM API, three on-device Swift backends*
+Best window: weekday 7-9 am Pacific.
 
-HN scoring window is the first hour. The README does the rest — no body needed.
+## 3. Reddit r/swift
 
-## 3. Reddit r/swift (text post)
+[**→ Submit to r/swift**](https://www.reddit.com/r/swift/submit?title=PrivateFoundationModels%20v0.9%20%E2%80%94%20Apple%20FoundationModels%20on%20iOS%2018%2B%2C%20plus%20the%20full%20OpenAI%20API%20surface%20%28chat%20%2F%20tools%20%2F%20vision%20%2F%20embeddings%29%20over%20HTTP&text=The%20same%20Apple-FM-shaped%20Swift%20call%20site%20that%20runs%20against%20CoreML%20on%20iOS%2018%20now%20also%20runs%20against%20Apple%27s%20actual%20native%20FoundationModels%20on%20iOS%2026%20%E2%80%94%20and%20the%20same%20backend%20is%20reachable%20from%20any%20language%20via%20an%20OpenAI-compatible%20HTTP%20server.%0A%0AVerified%20end-to-end%20on%20macOS%2026.0%20with%20the%20official%20openai%20Python%20SDK%3A%0A%0A-%20chat%20completions%20%28unary%20%2B%20streaming%20SSE%29%0A-%20function%20calling%20%28tools%5B%5D%20%2B%20tool_calls%5B%5D%20round-trip%29%0A-%20vision%20%28OpenAI%20content%20arrays%20with%20data%3Aimage%2F...%3Bbase64%2C...%29%0A-%20embeddings%20%28MLX-backed%2C%20experimental%29%0A%0ATwo-line%20swap%20on%20the%20client%3A%0A%0A%20%20%20%20client%20%3D%20OpenAI%28%0A%20%20%20%20%20%20%20%20base_url%3D%22http%3A%2F%2F127.0.0.1%3A11434%2Fv1%22%2C%0A%20%20%20%20%20%20%20%20api_key%3D%22not-required%22%2C%0A%20%20%20%20%29%0A%0AThree%20backends%20share%20the%20same%20surface%20%E2%80%94%20Apple%20FoundationModels%20%28native%2C%20iOS%2026%2B%29%2C%20CoreML%20%28iOS%2018%2B%29%2C%20MLX%20%28iOS%2017%2B%2C%20any%20mlx-community%2F%2A%20model%20including%20VLMs%29.%20MIT%2C%20SPM%20only.%0A%0ARepo%3A%20https%3A%2F%2Fgithub.com%2Fjohn-rocky%2FPrivateFoundationModels&kind=self)
 
-[**→ Submit to r/swift**](https://www.reddit.com/r/swift/submit?title=PrivateFoundationModels%20v0.5%20%E2%80%94%20Apple%20FoundationModels%20API%20on%20iOS%2018%2C%20native%20passthrough%20on%20iOS%2026%2C%20CoreML%20%2F%20MLX%20backends%20in%20between&text=The%20same%20LanguageModelSession.respond%28to%3A%29%20call%20site%20routes%20to%20three%20different%20runtimes%20depending%20on%20what%20is%20available%20on%20the%20device.%0A%0A-%20iOS%2026%2B%20%E2%86%92%20Apple%27s%20actual%20native%20FoundationModels%20%28Apple%20Intelligence%29%0A-%20iOS%2018%2B%20%E2%86%92%20CoreML%20on%20the%20Apple%20Neural%20Engine%0A-%20iOS%2017%2B%20%E2%86%92%20ml-explore%2Fmlx-swift-lm%20on%20the%20GPU%20%28any%20mlx-community%2F%2A%20model%29%0A%0A%40Generable%20structured%20output%20and%20Tool%20calling%20work%20on%20all%20three%20backends.%20Verified%20end-to-end%20on%20Apple%20M4%20Max%20with%20PASS%2014%20%2F%20FAIL%200%20on%20the%20Apple-native%20path.%0A%0AMIT%2C%20SPM%20only.%20Repo%3A%20https%3A%2F%2Fgithub.com%2Fjohn-rocky%2FPrivateFoundationModels&kind=self)
+## 4. Reddit r/iOSProgramming
 
-Title + body both pre-filled.
-
-## 4. Reddit r/iOSProgramming (text post)
-
-[**→ Submit to r/iOSProgramming**](https://www.reddit.com/r/iOSProgramming/submit?title=PrivateFoundationModels%20v0.5%20%E2%80%94%20Apple%20FoundationModels%20API%20on%20iOS%2018%2C%20native%20passthrough%20on%20iOS%2026%2C%20CoreML%20%2F%20MLX%20backends%20in%20between&text=The%20same%20LanguageModelSession.respond%28to%3A%29%20call%20site%20routes%20to%20three%20different%20runtimes%20depending%20on%20what%20is%20available%20on%20the%20device.%0A%0A-%20iOS%2026%2B%20%E2%86%92%20Apple%27s%20actual%20native%20FoundationModels%20%28Apple%20Intelligence%29%0A-%20iOS%2018%2B%20%E2%86%92%20CoreML%20on%20the%20Apple%20Neural%20Engine%0A-%20iOS%2017%2B%20%E2%86%92%20ml-explore%2Fmlx-swift-lm%20on%20the%20GPU%20%28any%20mlx-community%2F%2A%20model%29%0A%0A%40Generable%20structured%20output%20and%20Tool%20calling%20work%20on%20all%20three%20backends.%20Verified%20end-to-end%20on%20Apple%20M4%20Max%20with%20PASS%2014%20%2F%20FAIL%200%20on%20the%20Apple-native%20path.%0A%0AMIT%2C%20SPM%20only.%20Repo%3A%20https%3A%2F%2Fgithub.com%2Fjohn-rocky%2FPrivateFoundationModels&kind=self)
+[**→ Submit to r/iOSProgramming**](https://www.reddit.com/r/iOSProgramming/submit?title=PrivateFoundationModels%20v0.9%20%E2%80%94%20Apple%20FoundationModels%20on%20iOS%2018%2B%2C%20plus%20the%20full%20OpenAI%20API%20surface%20%28chat%20%2F%20tools%20%2F%20vision%20%2F%20embeddings%29%20over%20HTTP&text=The%20same%20Apple-FM-shaped%20Swift%20call%20site%20that%20runs%20against%20CoreML%20on%20iOS%2018%20now%20also%20runs%20against%20Apple%27s%20actual%20native%20FoundationModels%20on%20iOS%2026%20%E2%80%94%20and%20the%20same%20backend%20is%20reachable%20from%20any%20language%20via%20an%20OpenAI-compatible%20HTTP%20server.%0A%0AVerified%20end-to-end%20on%20macOS%2026.0%20with%20the%20official%20openai%20Python%20SDK%3A%0A%0A-%20chat%20completions%20%28unary%20%2B%20streaming%20SSE%29%0A-%20function%20calling%20%28tools%5B%5D%20%2B%20tool_calls%5B%5D%20round-trip%29%0A-%20vision%20%28OpenAI%20content%20arrays%20with%20data%3Aimage%2F...%3Bbase64%2C...%29%0A-%20embeddings%20%28MLX-backed%2C%20experimental%29%0A%0ATwo-line%20swap%20on%20the%20client%3A%0A%0A%20%20%20%20client%20%3D%20OpenAI%28%0A%20%20%20%20%20%20%20%20base_url%3D%22http%3A%2F%2F127.0.0.1%3A11434%2Fv1%22%2C%0A%20%20%20%20%20%20%20%20api_key%3D%22not-required%22%2C%0A%20%20%20%20%29%0A%0AThree%20backends%20share%20the%20same%20surface%20%E2%80%94%20Apple%20FoundationModels%20%28native%2C%20iOS%2026%2B%29%2C%20CoreML%20%28iOS%2018%2B%29%2C%20MLX%20%28iOS%2017%2B%2C%20any%20mlx-community%2F%2A%20model%20including%20VLMs%29.%20MIT%2C%20SPM%20only.%0A%0ARepo%3A%20https%3A%2F%2Fgithub.com%2Fjohn-rocky%2FPrivateFoundationModels&kind=self)
 
 ## 5. Apple Developer Forums
 
-Apple's forum doesn't expose a pre-fillable submit URL, so this one is a manual paste:
+Apple's forum doesn't expose a pre-fillable submit URL, so this one's a manual paste:
 
 - Open: <https://developer.apple.com/forums/create-content?tags=foundation-models>
 - Title + body in [`docs/apple-developer-forums-post.md`](apple-developer-forums-post.md)
@@ -47,6 +43,6 @@ If you want me to actually post end-to-end in a future session, add one of these
 
 - `@playwright/mcp` (browser automation — fully scripted post)
 - A custom Twitter MCP using your OAuth token
-- `mcp-reddit` for Reddit / `mcp-hn` for HN
+- `mcp-reddit` / `mcp-hn`
 
 Then I can drive the form fills + submit clicks without you ever touching a keyboard.
